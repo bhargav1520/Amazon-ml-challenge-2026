@@ -1,5 +1,5 @@
 """Feature engineering module for Business Entity Resolution.
-Computes high-dimensional string distance, token set, phonetic, and numerical
+Computes high-dimensional string distance, token set, phonetic Soundex, and numerical
 features on candidate record pairs using rapidfuzz (C++ engine).
 """
 
@@ -9,8 +9,29 @@ import pandas as pd
 from rapidfuzz import fuzz, distance
 
 
+def soundex(token: str) -> str:
+    """Computes standard 4-character Soundex phonetic code for string token."""
+    if not token or not token.isalpha():
+        return ""
+    token = token.upper()
+    mapping = {
+        "B": "1", "F": "1", "P": "1", "V": "1",
+        "C": "2", "G": "2", "J": "2", "K": "2", "Q": "2", "S": "2", "X": "2", "Z": "2",
+        "D": "3", "T": "3",
+        "L": "4",
+        "M": "5", "N": "5",
+        "R": "6",
+    }
+    code = [token[0]]
+    for char in token[1:]:
+        digit = mapping.get(char, "")
+        if digit and (not code or digit != code[-1]):
+            code.append(digit)
+    return ("".join(code) + "000")[:4]
+
+
 FEATURE_NAMES = [
-    # 1. Name Similarities
+    # 1. Name Similarities & Phonetics
     "name_ratio",
     "name_partial_ratio",
     "name_token_sort_ratio",
@@ -22,6 +43,8 @@ FEATURE_NAMES = [
     "name_exact",
     "name_containment",
     "name_first_token_match",
+    "name_phonetic_jaccard",
+    "name_first_phonetic_match",
     # 2. Address Similarities
     "addr_ratio",
     "addr_partial_ratio",
@@ -84,6 +107,17 @@ def extract_pair_features(
     t2 = n2.split()
     name_first_token_match = 1.0 if (t1 and t2 and t1[0] == t2[0]) else 0.0
 
+    # Phonetics
+    sx1 = [soundex(t) for t in t1 if len(t) >= 2]
+    sx2 = [soundex(t) for t in t2 if len(t) >= 2]
+    sx1_set = set(filter(None, sx1))
+    sx2_set = set(filter(None, sx2))
+    if sx1_set and sx2_set:
+        name_phonetic_jaccard = float(len(sx1_set.intersection(sx2_set)) / len(sx1_set.union(sx2_set)))
+    else:
+        name_phonetic_jaccard = 0.0
+    name_first_phonetic_match = 1.0 if (sx1 and sx2 and sx1[0] and sx1[0] == sx2[0]) else 0.0
+
     # 2. Address Features
     addr_ratio = fuzz.ratio(a1, a2) / 100.0
     addr_partial_ratio = fuzz.partial_ratio(a1, a2) / 100.0
@@ -131,6 +165,8 @@ def extract_pair_features(
         name_exact,
         name_containment,
         name_first_token_match,
+        name_phonetic_jaccard,
+        name_first_phonetic_match,
         addr_ratio,
         addr_partial_ratio,
         addr_token_sort_ratio,

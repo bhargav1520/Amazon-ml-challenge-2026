@@ -46,28 +46,38 @@ def run_stage4_inference(
     print("🚀 [STAGE 4] BATCHED TEST INFERENCE & LEADERBOARD EXPORT")
     print("=" * 60)
 
-    # 1. Load Model & Threshold
+    # 1. Load Model & Thresholds
     model_path = models_dir / "matcher_lgbm.pkl"
     thresh_path = models_dir / "best_threshold.txt"
+    country_thresh_path = models_dir / "country_thresholds.json"
 
     if not model_path.exists():
         raise FileNotFoundError(f"Trained model not found at {model_path}. Run Stage 3 first!")
 
-    print("\n[1/3] Loading Trained Model & Calibrated Threshold...")
+    print("\n[1/3] Loading Trained Model & Calibrated Thresholds...", flush=True)
     matcher = joblib.load(model_path)
 
+    import json
+    country_thresholds = {}
+    if country_thresh_path.exists():
+        try:
+            country_thresholds = json.loads(country_thresh_path.read_text(encoding="utf-8"))
+            print(f"Loaded Country Thresholds: {country_thresholds}", flush=True)
+        except Exception:
+            country_thresholds = {}
+
     if override_threshold is not None:
-        threshold = override_threshold
-        print(f"Using Override Threshold: {threshold:.3f}")
+        default_threshold = override_threshold
+        print(f"Using Override Threshold: {default_threshold:.3f}", flush=True)
     elif thresh_path.exists():
-        threshold = float(thresh_path.read_text(encoding="utf-8").strip())
-        print(f"Using Calibrated Threshold: {threshold:.3f}")
+        default_threshold = float(thresh_path.read_text(encoding="utf-8").strip())
+        print(f"Using Global Threshold: {default_threshold:.3f}", flush=True)
     else:
-        threshold = 0.500
-        print("Using Default Threshold: 0.500")
+        default_threshold = 0.850
+        print("Using Default Threshold: 0.850", flush=True)
 
     # 2. Load Preprocessed Test Data & Candidates
-    print("\n[2/3] Loading Preprocessed Test Data & Candidates from Cache...")
+    print("\n[2/3] Loading Preprocessed Test Data & Candidates from Cache...", flush=True)
     pool_test = pd.read_parquet(cache_dir / "pool_test_clean.parquet")
     s1_test = pd.read_parquet(cache_dir / "s1_test_clean.parquet")
 
@@ -90,20 +100,24 @@ def run_stage4_inference(
     del pool_test
     gc.collect()
 
+    s1_country_map = dict(zip(s1_test["entity_id"].values, s1_test["country"].values))
+
     s1_dict = {
         eid: {
             "id": eid,
             "name": nm,
             "address": addr,
             "combined": comb,
+            "country": ctry,
             "numbers": set(nums.split(",")) if nums else set(),
         }
-        for eid, nm, addr, comb, nums in zip(
+        for eid, nm, addr, comb, nums, ctry in zip(
             s1_test["entity_id"].values,
             s1_test["clean_name"].values,
             s1_test["clean_address"].values,
             s1_test["combined_text"].values,
             s1_test["address_numbers_str"].values,
+            s1_test["country"].values,
         )
     }
 
@@ -154,7 +168,7 @@ def run_stage4_inference(
                     X_batch = np.array(pair_features_batch, dtype=np.float32)
                     probas = matcher.predict_pair_proba(X_batch)
                     for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-                        if prob >= (threshold - 0.15):
+                        if prob >= (default_threshold - 0.15):
                             test_candidate_scores[sid].append((cand_id, float(prob)))
                     pair_features_batch.clear()
                     pair_mapping_batch.clear()
@@ -164,7 +178,7 @@ def run_stage4_inference(
         X_batch = np.array(pair_features_batch, dtype=np.float32)
         probas = matcher.predict_pair_proba(X_batch)
         for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-            if prob >= (threshold - 0.15):
+            if prob >= (default_threshold - 0.15):
                 test_candidate_scores[sid].append((cand_id, float(prob)))
         pair_features_batch.clear()
         pair_mapping_batch.clear()
@@ -172,7 +186,9 @@ def run_stage4_inference(
     from src.postprocessing import filter_matches_with_barrier
     test_predictions = {}
     for s1_id, score_list in test_candidate_scores.items():
-        test_predictions[s1_id] = filter_matches_with_barrier(score_list, threshold=threshold, margin=0.15)
+        ctry = s1_country_map.get(s1_id, "US")
+        th = country_thresholds.get(ctry, default_threshold)
+        test_predictions[s1_id] = filter_matches_with_barrier(score_list, threshold=th, margin=0.15)
 
     matching_results_path = output_dir / "matching_results.tsv"
     export_matching_results(test_predictions, all_s1_ids, str(matching_results_path))

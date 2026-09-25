@@ -151,20 +151,21 @@ def run_stage3_train(
     del X_train_list, y_train_list
     gc.collect()
 
-    # 3. Fit LightGBM
-    print(f"\n[3/4] Fitting LightGBM Match Classifier ({n_estimators} trees, lr={learning_rate})...", flush=True)
+    # 3. Fit Model Ensemble
+    print(f"\n[3/4] Fitting Dual Model Ensemble ({n_estimators} trees, lr={learning_rate})...", flush=True)
     matcher = EntityMatcherModel(n_estimators=n_estimators, learning_rate=learning_rate)
     matcher.train_on_pairs(X_mat, y_vec)
     del X_mat, y_vec
     gc.collect()
 
-    # 4. Calibrate F_0.5 Threshold on validation set
-    print("\n[4/4] Calibrating Macro F_0.5 Decision Threshold on 25k Validation Entities...", flush=True)
+    # 4. Calibrate F_0.5 Threshold on validation set with country partitioning
+    print("\n[4/4] Calibrating Macro F_0.5 Decision Thresholds on 25k Validation Entities...", flush=True)
     val_keys = sample_keys[:25000]
     total_val = len(val_keys)
     val_log_step = max(5000, total_val // 5)
     val_start = time.time()
     val_candidate_scores = {}
+    country_map = {}
 
     for idx, s1_id in enumerate(val_keys):
         if idx % val_log_step == 0 or idx == total_val - 1:
@@ -182,22 +183,41 @@ def run_stage3_train(
         if s1_id not in s1_dict:
             continue
         s1_rec = s1_dict[s1_id]
+        country_map[s1_id] = s1_rec.get("country", "US")
         c_recs = [pool_dict[cid] for cid in cands if cid in pool_dict]
         scores = matcher.score_candidates(s1_rec, c_recs)
         val_candidate_scores[s1_id] = scores
 
     val_ground_truth = {k: ground_truth.get(k, set()) for k in val_keys}
-    best_thresh, train_f05 = optimize_threshold(val_candidate_scores, val_ground_truth)
-    print(f"\n🎯 [CALIBRATION RESULT] Optimal Threshold: {best_thresh:.3f} | Validation F_0.5 Score: {train_f05:.4f}", flush=True)
+    
+    from src.postprocessing import optimize_country_thresholds, filter_matches_with_barrier
+    from src.local_evaluator import run_local_evaluation
+    import json
+
+    country_thresholds, train_f05 = optimize_country_thresholds(val_candidate_scores, val_ground_truth, country_map)
+    best_global_thresh, _ = optimize_threshold(val_candidate_scores, val_ground_truth)
+
+    val_predictions = {}
+    for s1_id, score_list in val_candidate_scores.items():
+        c = country_map.get(s1_id, "US")
+        th = country_thresholds.get(c, best_global_thresh)
+        val_predictions[s1_id] = set(filter_matches_with_barrier(score_list, threshold=th, margin=0.15))
+
+    print("\n")
+    run_local_evaluation(val_predictions, val_ground_truth, country_map)
 
     # Save artifacts
     model_save_path = models_dir / "matcher_lgbm.pkl"
     joblib.dump(matcher, model_save_path)
-    print(f"✅ Saved Trained Model: {model_save_path}", flush=True)
+    print(f"\n✅ Saved Trained Model: {model_save_path}", flush=True)
 
     thresh_save_path = models_dir / "best_threshold.txt"
-    thresh_save_path.write_text(f"{best_thresh}\n", encoding="utf-8")
-    print(f"✅ Saved Threshold: {thresh_save_path}", flush=True)
+    thresh_save_path.write_text(f"{best_global_thresh}\n", encoding="utf-8")
+    print(f"✅ Saved Global Threshold: {thresh_save_path}", flush=True)
+
+    country_thresh_path = models_dir / "country_thresholds.json"
+    country_thresh_path.write_text(json.dumps(country_thresholds, indent=2), encoding="utf-8")
+    print(f"✅ Saved Country Thresholds: {country_thresh_path}", flush=True)
 
     print("\n✅ [STAGE 3 COMPLETE] Model trained, evaluated, and saved successfully!", flush=True)
 

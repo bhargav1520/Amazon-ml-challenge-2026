@@ -1,5 +1,5 @@
 """Pairwise Matcher Model module for Business Entity Resolution.
-Trains a high-precision gradient-boosted tree classifier with consistent feature names.
+Trains a high-precision dual gradient-boosted ensemble (LightGBM + CatBoost).
 """
 
 from typing import Dict, List, Set, Tuple, Any, Optional
@@ -7,24 +7,31 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 
+try:
+    from catboost import CatBoostClassifier
+    HAS_CATBOOST = True
+except ImportError:
+    HAS_CATBOOST = False
+
 from src.feature_engineering import FEATURE_NAMES, extract_pair_features
 
 
 class EntityMatcherModel:
-    """Pairwise match classifier using LightGBM with strict feature name binding."""
+    """Pairwise match classifier using LightGBM + CatBoost dual ensemble."""
 
     def __init__(
         self,
-        n_estimators: int = 250,
-        learning_rate: float = 0.05,
+        n_estimators: int = 200,
+        learning_rate: float = 0.06,
         max_depth: int = 7,
         num_leaves: int = 45,
         min_child_samples: int = 1,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,
+        enable_ensemble: bool = True,
         random_state: int = 42,
     ):
-        self.model = lgb.LGBMClassifier(
+        self.lgb_model = lgb.LGBMClassifier(
             n_estimators=n_estimators,
             learning_rate=learning_rate,
             max_depth=max_depth,
@@ -38,6 +45,19 @@ class EntityMatcherModel:
             importance_type="gain",
             verbose=-1,
         )
+        self.enable_ensemble = enable_ensemble and HAS_CATBOOST
+        if self.enable_ensemble:
+            self.cb_model = CatBoostClassifier(
+                iterations=n_estimators,
+                learning_rate=learning_rate,
+                depth=min(max_depth, 8),
+                random_seed=random_state,
+                thread_count=-1,
+                verbose=False,
+            )
+        else:
+            self.cb_model = None
+
         self.feature_names = FEATURE_NAMES
         self.is_fitted = False
 
@@ -46,21 +66,27 @@ class EntityMatcherModel:
         X: np.ndarray,
         y: np.ndarray,
     ) -> None:
-        """Fits the LightGBM classifier on feature DataFrame with explicit column names."""
+        """Fits the model ensemble on feature DataFrame with explicit column names."""
         df_X = pd.DataFrame(X, columns=self.feature_names)
-        self.model.fit(df_X, y)
+        self.lgb_model.fit(df_X, y)
+        if self.enable_ensemble and self.cb_model is not None:
+            self.cb_model.fit(df_X, y)
         self.is_fitted = True
 
     def predict_pair_proba(
         self,
         X: np.ndarray,
     ) -> np.ndarray:
-        """Returns probability of match (class 1) using named DataFrame to prevent warnings."""
+        """Returns blended probability of match (class 1) from the ensemble."""
         if not self.is_fitted:
             raise ValueError("Model is not fitted yet!")
         df_X = pd.DataFrame(X, columns=self.feature_names)
-        probas = self.model.predict_proba(df_X)
-        return probas[:, 1]
+        lgb_probas = self.lgb_model.predict_proba(df_X)[:, 1]
+
+        if self.enable_ensemble and self.cb_model is not None:
+            cb_probas = self.cb_model.predict_proba(df_X)[:, 1]
+            return 0.5 * lgb_probas + 0.5 * cb_probas
+        return lgb_probas
 
     def score_candidates(
         self,
@@ -82,3 +108,4 @@ class EntityMatcherModel:
         probas = self.predict_pair_proba(X_mat)
 
         return list(zip(c_ids, [float(p) for p in probas]))
+

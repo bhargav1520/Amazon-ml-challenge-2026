@@ -88,17 +88,7 @@ def optimize_threshold(
     threshold_range: Tuple[float, float, int] = (0.5, 0.98, 49),
     margin: float = 0.15,
 ) -> Tuple[float, float]:
-    """Finds optimal decision threshold maximizing macro-average F_0.5 score.
-    
-    Args:
-        candidate_scores: Dict mapping s1_id -> List of (cand_id, probability_score)
-        ground_truth: Dict mapping s1_id -> Set of true matching IDs
-        threshold_range: (min_thresh, max_thresh, steps)
-        margin: Maximum score drop from top candidate to accept multiple matches
-        
-    Returns:
-        Tuple of (best_threshold, best_f05_score)
-    """
+    """Finds optimal decision threshold maximizing macro-average F_0.5 score."""
     thresholds = np.linspace(threshold_range[0], threshold_range[1], threshold_range[2])
     best_thresh = 0.85
     best_score = -1.0
@@ -115,6 +105,41 @@ def optimize_threshold(
             best_thresh = float(thresh)
 
     return best_thresh, best_score
+
+
+def optimize_country_thresholds(
+    candidate_scores: Dict[str, List[Tuple[str, float]]],
+    ground_truth: Dict[str, Set[str]],
+    country_map: Dict[str, str],
+    threshold_range: Tuple[float, float, int] = (0.5, 0.98, 49),
+    margin: float = 0.15,
+) -> Tuple[Dict[str, float], float]:
+    """Finds per-country optimal decision thresholds maximizing macro-average F_0.5 score."""
+    country_groups: Dict[str, Dict[str, List[Tuple[str, float]]]] = {}
+    country_gt: Dict[str, Dict[str, Set[str]]] = {}
+
+    for s1_id, scores in candidate_scores.items():
+        c = country_map.get(s1_id, "default")
+        if c not in country_groups:
+            country_groups[c] = {}
+            country_gt[c] = {}
+        country_groups[c][s1_id] = scores
+        country_gt[c][s1_id] = ground_truth.get(s1_id, set())
+
+    country_thresholds: Dict[str, float] = {}
+    all_preds: Dict[str, Set[str]] = {}
+
+    for c, c_cands in country_groups.items():
+        c_gt = country_gt[c]
+        c_best_th, _ = optimize_threshold(c_cands, c_gt, threshold_range=threshold_range, margin=margin)
+        country_thresholds[c] = c_best_th
+
+        for s1_id, score_list in c_cands.items():
+            matched = filter_matches_with_barrier(score_list, threshold=c_best_th, margin=margin)
+            all_preds[s1_id] = set(matched)
+
+    total_macro_f05 = compute_macro_f05(all_preds, ground_truth)
+    return country_thresholds, total_macro_f05
 
 
 def export_matching_results(
