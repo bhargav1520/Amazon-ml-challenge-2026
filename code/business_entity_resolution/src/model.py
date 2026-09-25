@@ -1,11 +1,13 @@
 """Pairwise Matcher Model module for Business Entity Resolution.
-Trains a high-precision dual gradient-boosted ensemble (LightGBM + CatBoost).
+Trains a high-precision dual gradient-boosted ensemble (LightGBM + CatBoost)
+with Stratified K-Fold bagging to eliminate variance and maximize leaderboard precision.
 """
 
 from typing import Dict, List, Set, Tuple, Any, Optional
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
+from sklearn.model_selection import StratifiedKFold
 
 try:
     from catboost import CatBoostClassifier
@@ -17,7 +19,7 @@ from src.feature_engineering import FEATURE_NAMES, extract_pair_features
 
 
 class EntityMatcherModel:
-    """Pairwise match classifier using LightGBM + CatBoost dual ensemble."""
+    """Pairwise match classifier using Stratified K-Fold LightGBM + CatBoost dual ensemble."""
 
     def __init__(
         self,
@@ -28,36 +30,23 @@ class EntityMatcherModel:
         min_child_samples: int = 1,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,
+        n_folds: int = 3,
         enable_ensemble: bool = True,
         random_state: int = 42,
     ):
-        self.lgb_model = lgb.LGBMClassifier(
-            n_estimators=n_estimators,
-            learning_rate=learning_rate,
-            max_depth=max_depth,
-            num_leaves=num_leaves,
-            min_child_samples=min_child_samples,
-            subsample=subsample,
-            colsample_bytree=colsample_bytree,
-            scale_pos_weight=0.6,
-            random_state=random_state,
-            n_jobs=-1,
-            importance_type="gain",
-            verbose=-1,
-        )
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.max_depth = max_depth
+        self.num_leaves = num_leaves
+        self.min_child_samples = min_child_samples
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.n_folds = n_folds
         self.enable_ensemble = enable_ensemble and HAS_CATBOOST
-        if self.enable_ensemble:
-            self.cb_model = CatBoostClassifier(
-                iterations=n_estimators,
-                learning_rate=learning_rate,
-                depth=min(max_depth, 8),
-                random_seed=random_state,
-                thread_count=-1,
-                verbose=False,
-            )
-        else:
-            self.cb_model = None
+        self.random_state = random_state
 
+        self.lgb_models: List[lgb.LGBMClassifier] = []
+        self.cb_models: List[Any] = []
         self.feature_names = FEATURE_NAMES
         self.is_fitted = False
 
@@ -66,27 +55,74 @@ class EntityMatcherModel:
         X: np.ndarray,
         y: np.ndarray,
     ) -> None:
-        """Fits the model ensemble on feature DataFrame with explicit column names."""
+        """Fits the K-Fold model ensemble on feature DataFrame with explicit column names."""
         df_X = pd.DataFrame(X, columns=self.feature_names)
-        self.lgb_model.fit(df_X, y)
-        if self.enable_ensemble and self.cb_model is not None:
-            self.cb_model.fit(df_X, y)
+        self.lgb_models.clear()
+        self.cb_models.clear()
+
+        # If data size allows, train across Stratified Folds
+        if len(y) >= self.n_folds * 10:
+            skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
+            splits = list(skf.split(df_X, y))
+        else:
+            splits = [(np.arange(len(y)), np.arange(len(y)))]
+
+        for fold_idx, (train_idx, _) in enumerate(splits):
+            X_f, y_f = df_X.iloc[train_idx], y[train_idx]
+            
+            lgbm = lgb.LGBMClassifier(
+                n_estimators=self.n_estimators,
+                learning_rate=self.learning_rate,
+                max_depth=self.max_depth,
+                num_leaves=self.num_leaves,
+                min_child_samples=self.min_child_samples,
+                subsample=self.subsample,
+                colsample_bytree=self.colsample_bytree,
+                scale_pos_weight=0.6,
+                random_state=self.random_state + fold_idx,
+                n_jobs=-1,
+                importance_type="gain",
+                verbose=-1,
+            )
+            lgbm.fit(X_f, y_f)
+            self.lgb_models.append(lgbm)
+
+            if self.enable_ensemble:
+                cb = CatBoostClassifier(
+                    iterations=self.n_estimators,
+                    learning_rate=self.learning_rate,
+                    depth=min(self.max_depth, 7),
+                    random_seed=self.random_state + fold_idx,
+                    thread_count=-1,
+                    verbose=False,
+                )
+                cb.fit(X_f, y_f)
+                self.cb_models.append(cb)
+
         self.is_fitted = True
 
     def predict_pair_proba(
         self,
         X: np.ndarray,
     ) -> np.ndarray:
-        """Returns blended probability of match (class 1) from the ensemble."""
-        if not self.is_fitted:
+        """Returns blended ensemble probability of match (class 1)."""
+        if not self.is_fitted or not self.lgb_models:
             raise ValueError("Model is not fitted yet!")
         df_X = pd.DataFrame(X, columns=self.feature_names)
-        lgb_probas = self.lgb_model.predict_proba(df_X)[:, 1]
 
-        if self.enable_ensemble and self.cb_model is not None:
-            cb_probas = self.cb_model.predict_proba(df_X)[:, 1]
-            return 0.5 * lgb_probas + 0.5 * cb_probas
-        return lgb_probas
+        lgb_preds = np.zeros(len(X), dtype=np.float32)
+        for m in self.lgb_models:
+            lgb_preds += m.predict_proba(df_X)[:, 1]
+        lgb_preds /= len(self.lgb_models)
+
+        if self.cb_models:
+            cb_preds = np.zeros(len(X), dtype=np.float32)
+            for m in self.cb_models:
+                cb_preds += m.predict_proba(df_X)[:, 1]
+            cb_preds /= len(self.cb_models)
+            return 0.5 * lgb_preds + 0.5 * cb_preds
+
+        return lgb_preds
 
     def score_candidates(
         self,
