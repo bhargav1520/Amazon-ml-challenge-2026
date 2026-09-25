@@ -1,18 +1,17 @@
 """Pairwise Matcher Model module for Business Entity Resolution.
-Trains a high-precision gradient-boosted tree classifier to predict match probability
-for candidate pairs.
+Trains a high-precision gradient-boosted tree classifier with consistent feature names.
 """
 
 from typing import Dict, List, Set, Tuple, Any, Optional
 import numpy as np
+import pandas as pd
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
 
 from src.feature_engineering import FEATURE_NAMES, extract_pair_features
 
 
 class EntityMatcherModel:
-    """Pairwise match classifier using LightGBM."""
+    """Pairwise match classifier using LightGBM with strict feature name binding."""
 
     def __init__(
         self,
@@ -42,18 +41,20 @@ class EntityMatcherModel:
         X: np.ndarray,
         y: np.ndarray,
     ) -> None:
-        """Fits the LightGBM classifier on feature matrix X and binary labels y."""
-        self.model.fit(X, y)
+        """Fits the LightGBM classifier on feature DataFrame with explicit column names."""
+        df_X = pd.DataFrame(X, columns=self.feature_names)
+        self.model.fit(df_X, y)
         self.is_fitted = True
 
     def predict_pair_proba(
         self,
         X: np.ndarray,
     ) -> np.ndarray:
-        """Returns probability of match (class 1)."""
+        """Returns probability of match (class 1) using named DataFrame to prevent warnings."""
         if not self.is_fitted:
             raise ValueError("Model is not fitted yet!")
-        probas = self.model.predict_proba(X)
+        df_X = pd.DataFrame(X, columns=self.feature_names)
+        probas = self.model.predict_proba(df_X)
         return probas[:, 1]
 
     def score_candidates(
