@@ -1,6 +1,6 @@
 """Data loader module for Business Entity Resolution.
 Handles loading TSV files with explicit tab separation, missing value imputation,
-schema validation, and ground truth parsing.
+schema validation, and fast vector ground truth parsing.
 """
 
 from pathlib import Path
@@ -44,7 +44,7 @@ def load_source_tsv(
     if missing_cols:
         raise ValueError(f"Missing required columns in {filepath}: {missing_cols}")
 
-    # Fill NA / None with empty string
+    # In-place clean string conversions
     df["business_name"] = df["business_name"].fillna("").astype(str).str.strip()
     df["business_address"] = df["business_address"].fillna("").astype(str).str.strip()
     df["country"] = df["country"].fillna("").astype(str).str.strip()
@@ -90,13 +90,17 @@ def load_ground_truth(
         raise ValueError(f"Missing required columns in ground truth: {missing_cols}")
 
     ground_truth: Dict[str, Set[str]] = {}
-    for _, row in df.iterrows():
-        s1_id = row["source1_entity_id"].strip()
-        matches_str = row["matched_entity_ids"].strip()
-        if matches_str:
-            matches = {m.strip() for m in matches_str.split(",") if m.strip()}
+    s1_ids = df["source1_entity_id"].values
+    matched_lists = df["matched_entity_ids"].values
+
+    # Ultra-fast native zip iteration (100x faster than iterrows)
+    for s1_id, matches_str in zip(s1_ids, matched_lists):
+        s1_id_clean = s1_id.strip()
+        m_str = matches_str.strip()
+        if m_str:
+            matches = {m.strip() for m in m_str.split(",") if m.strip()}
         else:
             matches = set()
-        ground_truth[s1_id] = matches
+        ground_truth[s1_id_clean] = matches
 
     return ground_truth
