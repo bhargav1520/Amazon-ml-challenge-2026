@@ -1,6 +1,6 @@
 """Stage 4: Batched Test Inference & Leaderboard Export.
 Loads saved LightGBM model and preprocessed test candidates,
-runs batched C++ matrix scoring, and exports output/matching_results.tsv.
+runs batched C++ matrix scoring with live tqdm progress bars, and exports output/matching_results.tsv.
 """
 
 import argparse
@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import joblib
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from src.feature_engineering import extract_pair_features
 from src.postprocessing import export_matching_results
@@ -34,7 +35,7 @@ def run_stage4_inference(
     batch_size: int = 100000,
     override_threshold: float = None,
 ) -> None:
-    """Runs high-throughput batched inference on test set candidates."""
+    """Runs high-throughput batched inference on test set candidates with progress tracking."""
     cache_dir = Path(cache_dir)
     candidates_cache_dir = Path(candidates_cache_dir)
     models_dir = Path(models_dir)
@@ -110,17 +111,36 @@ def run_stage4_inference(
     with open(test_cand_file, "rb") as f:
         test_candidates = pickle.load(f)
 
-    # 3. Batched Vector Matrix Inference
-    print(f"\n[3/3] Running Batched Inference (Batch Size: {batch_size:,})...")
+    # 3. Batched Vector Matrix Inference with Progress Bar
     all_s1_ids = list(s1_test["entity_id"].values)
     del s1_test
     gc.collect()
+
+    total_s1 = len(all_s1_ids)
+    print(f"\n[3/3] Running Batched Test Inference across {total_s1:,} entities (Batch Size: {batch_size:,})...", flush=True)
 
     test_predictions = {s1_id: [] for s1_id in all_s1_ids}
     pair_features_batch = []
     pair_mapping_batch = []
 
-    for s1_id, cands in test_candidates.items():
+    log_step = max(50000, total_s1 // 10)
+    import time
+    start_time = time.time()
+    total_evaluated_pairs = 0
+
+    for idx, s1_id in enumerate(all_s1_ids):
+        if idx % log_step == 0 or idx == total_s1 - 1:
+            pct = (idx + 1) / total_s1 * 100.0
+            elapsed = time.time() - start_time
+            rate = (idx + 1) / max(elapsed, 0.001)
+            eta = (total_s1 - (idx + 1)) / max(rate, 0.001)
+            print(
+                f"  [{pct:5.1f}%] {idx + 1:,} / {total_s1:,} entities | "
+                f"Evaluated Pairs: {total_evaluated_pairs:,} | Speed: {rate:,.0f} ent/s | ETA: {eta:.1f}s",
+                flush=True,
+            )
+
+        cands = test_candidates.get(s1_id, [])
         if not cands or s1_id not in s1_dict:
             continue
         s1_rec = s1_dict[s1_id]
@@ -128,6 +148,7 @@ def run_stage4_inference(
             if cid in pool_dict:
                 pair_features_batch.append(extract_pair_features(s1_rec, pool_dict[cid]))
                 pair_mapping_batch.append((s1_id, cid))
+                total_evaluated_pairs += 1
 
                 if len(pair_features_batch) >= batch_size:
                     X_batch = np.array(pair_features_batch, dtype=np.float32)
@@ -150,12 +171,12 @@ def run_stage4_inference(
 
     matching_results_path = output_dir / "matching_results.tsv"
     export_matching_results(test_predictions, all_s1_ids, str(matching_results_path))
-    print(f"\nSaved Final Leaderboard Matches to: {matching_results_path}")
-    print("\n✅ [STAGE 4 COMPLETE] Prediction files ready for validation and upload!")
+    print(f"\n✅ Saved Final Leaderboard Matches to: {matching_results_path}", flush=True)
+    print("\n✅ [STAGE 4 COMPLETE] Prediction files ready for validation and upload!", flush=True)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stage 4: Batched test inference and TSV export")
+    parser = argparse.ArgumentParser(description="Stage 4: Batched test inference with progress tracking")
     parser.add_argument("--cache-dir", type=str, default="processed_data")
     parser.add_argument("--candidates-cache-dir", type=str, default="cache")
     parser.add_argument("--models-dir", type=str, default="models")
