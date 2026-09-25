@@ -119,7 +119,7 @@ def run_stage4_inference(
     total_s1 = len(all_s1_ids)
     print(f"\n[3/3] Running Batched Test Inference across {total_s1:,} entities (Batch Size: {batch_size:,})...", flush=True)
 
-    test_predictions = {s1_id: [] for s1_id in all_s1_ids}
+    test_candidate_scores = {s1_id: [] for s1_id in all_s1_ids}
     pair_features_batch = []
     pair_mapping_batch = []
 
@@ -154,8 +154,8 @@ def run_stage4_inference(
                     X_batch = np.array(pair_features_batch, dtype=np.float32)
                     probas = matcher.predict_pair_proba(X_batch)
                     for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-                        if prob >= threshold:
-                            test_predictions[sid].append(cand_id)
+                        if prob >= (threshold - 0.15):
+                            test_candidate_scores[sid].append((cand_id, float(prob)))
                     pair_features_batch.clear()
                     pair_mapping_batch.clear()
 
@@ -164,10 +164,15 @@ def run_stage4_inference(
         X_batch = np.array(pair_features_batch, dtype=np.float32)
         probas = matcher.predict_pair_proba(X_batch)
         for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-            if prob >= threshold:
-                test_predictions[sid].append(cand_id)
+            if prob >= (threshold - 0.15):
+                test_candidate_scores[sid].append((cand_id, float(prob)))
         pair_features_batch.clear()
         pair_mapping_batch.clear()
+
+    from src.postprocessing import filter_matches_with_barrier
+    test_predictions = {}
+    for s1_id, score_list in test_candidate_scores.items():
+        test_predictions[s1_id] = filter_matches_with_barrier(score_list, threshold=threshold, margin=0.15)
 
     matching_results_path = output_dir / "matching_results.tsv"
     export_matching_results(test_predictions, all_s1_ids, str(matching_results_path))

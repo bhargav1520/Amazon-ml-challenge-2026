@@ -44,19 +44,17 @@ catboost_info/
 # ------------------------------------------------------------------------------
 # 3. Output, Submissions, Predictions & Zip Archives
 # ------------------------------------------------------------------------------
-# Ignore generic output dumps and zip archives, but allow submission TSVs
+# Ignore all generated output files, dataset TSVs, and large dumps
+output/
+student_resource/
 submissions/
 prediction/
 predictions/
+*.tsv
 *.zip
 *.tar
 *.tar.gz
 *.tgz
-
-# Allow submission output files to be tracked in Git for team sharing
-!output/
-!output/matching_results.tsv
-!output/candidate_pairs.tsv
 
 # ------------------------------------------------------------------------------
 # 4. Experiment Tracking, Logs & Cache Directories

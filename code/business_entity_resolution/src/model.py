@@ -15,11 +15,13 @@ class EntityMatcherModel:
 
     def __init__(
         self,
-        n_estimators: int = 200,
+        n_estimators: int = 250,
         learning_rate: float = 0.05,
-        max_depth: int = 6,
-        num_leaves: int = 31,
-        min_child_samples: int = 2,
+        max_depth: int = 7,
+        num_leaves: int = 45,
+        min_child_samples: int = 1,
+        subsample: float = 0.8,
+        colsample_bytree: float = 0.8,
         random_state: int = 42,
     ):
         self.model = lgb.LGBMClassifier(
@@ -28,6 +30,9 @@ class EntityMatcherModel:
             max_depth=max_depth,
             num_leaves=num_leaves,
             min_child_samples=min_child_samples,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            scale_pos_weight=0.6,
             random_state=random_state,
             n_jobs=-1,
             importance_type="gain",

@@ -55,10 +55,38 @@ def compute_macro_f05(
     return float(np.mean(scores))
 
 
+def filter_matches_with_barrier(
+    score_list: List[Tuple[str, float]],
+    threshold: float = 0.85,
+    margin: float = 0.15,
+) -> List[str]:
+    """Filters candidate scores applying a precision barrier to eliminate singleton false positives.
+    
+    Rules:
+    1. Only candidates with score >= threshold are considered.
+    2. If top candidate is confident, only retain additional candidates that are within `margin` of top score.
+    """
+    if not score_list:
+        return []
+
+    valid = [(cid, score) for cid, score in score_list if score >= threshold]
+    if not valid:
+        return []
+
+    # Sort descending by confidence score
+    valid.sort(key=lambda x: x[1], reverse=True)
+    top_score = valid[0][1]
+
+    # Retain top matches that are close to the best score
+    selected = [cid for cid, score in valid if (top_score - score) <= margin]
+    return selected
+
+
 def optimize_threshold(
     candidate_scores: Dict[str, List[Tuple[str, float]]],
     ground_truth: Dict[str, Set[str]],
-    threshold_range: Tuple[float, float, int] = (0.3, 0.95, 25),
+    threshold_range: Tuple[float, float, int] = (0.5, 0.98, 49),
+    margin: float = 0.15,
 ) -> Tuple[float, float]:
     """Finds optimal decision threshold maximizing macro-average F_0.5 score.
     
@@ -66,19 +94,20 @@ def optimize_threshold(
         candidate_scores: Dict mapping s1_id -> List of (cand_id, probability_score)
         ground_truth: Dict mapping s1_id -> Set of true matching IDs
         threshold_range: (min_thresh, max_thresh, steps)
+        margin: Maximum score drop from top candidate to accept multiple matches
         
     Returns:
         Tuple of (best_threshold, best_f05_score)
     """
     thresholds = np.linspace(threshold_range[0], threshold_range[1], threshold_range[2])
-    best_thresh = 0.5
+    best_thresh = 0.85
     best_score = -1.0
 
     for thresh in thresholds:
         preds: Dict[str, Set[str]] = {}
         for s1_id, score_list in candidate_scores.items():
-            matched = {cid for cid, score in score_list if score >= thresh}
-            preds[s1_id] = matched
+            matched = filter_matches_with_barrier(score_list, threshold=thresh, margin=margin)
+            preds[s1_id] = set(matched)
 
         score = compute_macro_f05(preds, ground_truth)
         if score > best_score:
