@@ -43,7 +43,7 @@ def run_stage4_inference(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("🚀 [STAGE 4] BATCHED TEST INFERENCE & LEADERBOARD EXPORT")
+    print("[STAGE] [STAGE 4] BATCHED TEST INFERENCE & LEADERBOARD EXPORT")
     print("=" * 60)
 
     # 1. Load Model & Thresholds
@@ -192,8 +192,8 @@ def run_stage4_inference(
 
     matching_results_path = output_dir / "matching_results.tsv"
     export_matching_results(test_predictions, all_s1_ids, str(matching_results_path))
-    print(f"\n✅ Saved Final Leaderboard Matches to: {matching_results_path}", flush=True)
-    print("\n✅ [STAGE 4 COMPLETE] Prediction files ready for validation and upload!", flush=True)
+    print(f"\n[OK] Saved Final Leaderboard Matches to: {matching_results_path}", flush=True)
+    print("\n[OK] [STAGE 4 COMPLETE] Prediction files ready for validation and upload!", flush=True)
 
 
 def main():

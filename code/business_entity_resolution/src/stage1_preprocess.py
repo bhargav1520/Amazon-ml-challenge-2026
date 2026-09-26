@@ -36,7 +36,7 @@ def run_stage1_preprocess(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("🧹 [STAGE 1] PREPROCESSING RAW DATASETS & BUILDING CACHE")
+    print("[STAGE] [STAGE 1] PREPROCESSING RAW DATASETS & BUILDING CACHE")
     print("=" * 60)
 
     # 1. Train Source 1
@@ -100,7 +100,7 @@ def run_stage1_preprocess(
     del pool_test
     gc.collect()
 
-    print("\n✅ [STAGE 1 COMPLETE] All preprocessed datasets successfully cached to:", cache_dir)
+    print("\n[OK] [STAGE 1 COMPLETE] All preprocessed datasets successfully cached to:", cache_dir)
 
 
 def main():

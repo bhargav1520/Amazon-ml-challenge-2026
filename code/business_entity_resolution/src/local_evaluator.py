@@ -68,14 +68,14 @@ def run_local_evaluation(
     singleton_acc = (singleton_correct / singleton_total) if singleton_total > 0 else 1.0
 
     print("=" * 65)
-    print("🏆 [LOCAL COMPETITION JUDGING REPORT]")
+    print("[RESULT] [LOCAL COMPETITION JUDGING REPORT]")
     print("=" * 65)
-    print(f"📊 Evaluated Entities:       {total_entities:,}")
-    print(f"🎯 Overall Macro F_0.5 Score: {macro_f05:.4f}")
-    print(f"🎯 Micro Precision:          {micro_prec:.4f}")
-    print(f"🎯 Micro Recall:             {micro_rec:.4f}")
-    print(f"🛡️ Singleton Accuracy:       {singleton_acc:.2%} ({singleton_correct:,} / {singleton_total:,})")
-    print(f"❌ False Positives (Alarms): {fp_total:,} | False Negatives (Misses): {fn_total:,}")
+    print(f"[METRICS] Evaluated Entities:       {total_entities:,}")
+    print(f"[SCORE] Overall Macro F_0.5 Score: {macro_f05:.4f}")
+    print(f"[SCORE] Micro Precision:          {micro_prec:.4f}")
+    print(f"[SCORE] Micro Recall:             {micro_rec:.4f}")
+    print(f"[SHIELD] Singleton Accuracy:       {singleton_acc:.2%} ({singleton_correct:,} / {singleton_total:,})")
+    print(f"[MISS] False Positives (Alarms): {fp_total:,} | False Negatives (Misses): {fn_total:,}")
 
     results = {
         "macro_f05": macro_f05,
@@ -85,7 +85,7 @@ def run_local_evaluation(
     }
 
     if country_scores:
-        print("\n🌍 [Country-Wise Performance Breakdown]")
+        print("\n[COUNTRY] [Country-Wise Performance Breakdown]")
         for c, c_scores in country_scores.items():
             c_f05 = float(np.mean(c_scores))
             results[f"f05_{c}"] = c_f05

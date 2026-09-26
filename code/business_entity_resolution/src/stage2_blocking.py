@@ -38,7 +38,7 @@ def run_stage2_blocking(
     candidates_cache_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("🔍 [STAGE 2] CANDIDATE BLOCKING & PAIR GENERATION")
+    print("[STAGE] [STAGE 2] CANDIDATE BLOCKING & PAIR GENERATION")
     print("=" * 60)
 
     # 1. Train Blocking
@@ -65,7 +65,7 @@ def run_stage2_blocking(
     train_cand_file = candidates_cache_dir / "train_candidates.pkl"
     with open(train_cand_file, "wb") as f:
         pickle.dump(train_candidates, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"✅ Saved {len(train_candidates):,} Train Candidate Lists to: {train_cand_file}")
+    print(f"[OK] Saved {len(train_candidates):,} Train Candidate Lists to: {train_cand_file}")
     del train_candidates
     gc.collect()
 
@@ -89,9 +89,9 @@ def run_stage2_blocking(
     cand_pairs_df = format_candidate_pairs_dataframe(test_candidates)
     cand_pairs_path = output_dir / "candidate_pairs.tsv"
     cand_pairs_df.to_csv(cand_pairs_path, sep="\t", index=False)
-    print(f"✅ Saved Test Candidate Pairs to: {cand_pairs_path}")
+    print(f"[OK] Saved Test Candidate Pairs to: {cand_pairs_path}")
 
-    print("\n✅ [STAGE 2 COMPLETE] Blocking finished successfully!")
+    print("\n[OK] [STAGE 2 COMPLETE] Blocking finished successfully!")
 
 
 def main():

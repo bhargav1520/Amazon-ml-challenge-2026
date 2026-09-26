@@ -46,7 +46,7 @@ def run_stage3_train(
     models_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("🧠 [STAGE 3] FEATURE EXTRACTION & LIGHTGBM MODEL TRAINING")
+    print("[STAGE] [STAGE 3] FEATURE EXTRACTION & LIGHTGBM MODEL TRAINING")
     print("=" * 60)
 
     print("\n[1/4] Loading Preprocessed Train Data & Candidates from Cache...")
@@ -150,7 +150,7 @@ def run_stage3_train(
 
     X_mat = np.array(X_train_list, dtype=np.float32)
     y_vec = np.array(y_train_list, dtype=np.int32)
-    print(f"\n📊 Training Matrix: {X_mat.shape[0]:,} pairs, {X_mat.shape[1]} features (Positives: {np.sum(y_vec):,}, Negatives: {len(y_vec) - np.sum(y_vec):,})", flush=True)
+    print(f"\n[METRICS] Training Matrix: {X_mat.shape[0]:,} pairs, {X_mat.shape[1]} features (Positives: {np.sum(y_vec):,}, Negatives: {len(y_vec) - np.sum(y_vec):,})", flush=True)
 
     del X_train_list, y_train_list
     gc.collect()
@@ -213,17 +213,17 @@ def run_stage3_train(
     # Save artifacts
     model_save_path = models_dir / "matcher_lgbm.pkl"
     joblib.dump(matcher, model_save_path)
-    print(f"\n✅ Saved Trained Model: {model_save_path}", flush=True)
+    print(f"\n[OK] Saved Trained Model: {model_save_path}", flush=True)
 
     thresh_save_path = models_dir / "best_threshold.txt"
     thresh_save_path.write_text(f"{best_global_thresh}\n", encoding="utf-8")
-    print(f"✅ Saved Global Threshold: {thresh_save_path}", flush=True)
+    print(f"[OK] Saved Global Threshold: {thresh_save_path}", flush=True)
 
     country_thresh_path = models_dir / "country_thresholds.json"
     country_thresh_path.write_text(json.dumps(country_thresholds, indent=2), encoding="utf-8")
-    print(f"✅ Saved Country Thresholds: {country_thresh_path}", flush=True)
+    print(f"[OK] Saved Country Thresholds: {country_thresh_path}", flush=True)
 
-    print("\n✅ [STAGE 3 COMPLETE] Model trained, evaluated, and saved successfully!", flush=True)
+    print("\n[OK] [STAGE 3 COMPLETE] Model trained, evaluated, and saved successfully!", flush=True)
 
 
 def main():
