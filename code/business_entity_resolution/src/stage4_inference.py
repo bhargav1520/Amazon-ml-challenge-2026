@@ -133,7 +133,7 @@ def run_stage4_inference(
     total_s1 = len(all_s1_ids)
     print(f"\n[3/3] Running Batched Test Inference across {total_s1:,} entities (Batch Size: {batch_size:,})...", flush=True)
 
-    test_candidate_scores = {s1_id: [] for s1_id in all_s1_ids}
+    test_predictions = {}
     pair_features_batch = []
     pair_mapping_batch = []
 
@@ -141,6 +141,21 @@ def run_stage4_inference(
     import time
     start_time = time.time()
     total_evaluated_pairs = 0
+
+    def _process_batch(feat_batch, map_batch):
+        if not feat_batch:
+            return
+        X_batch = np.array(feat_batch, dtype=np.float32)
+        probas = matcher.predict_pair_proba(X_batch)
+        del X_batch
+        for (sid, cand_id), prob in zip(map_batch, probas):
+            ctry = s1_country_map.get(sid, "US")
+            th = country_thresholds.get(ctry, default_threshold)
+            if prob >= th:
+                if sid not in test_predictions:
+                    test_predictions[sid] = []
+                test_predictions[sid].append(cand_id)
+        del probas
 
     for idx, s1_id in enumerate(all_s1_ids):
         if idx % log_step == 0 or idx == total_s1 - 1:
@@ -153,8 +168,9 @@ def run_stage4_inference(
                 f"Evaluated Pairs: {total_evaluated_pairs:,} | Speed: {rate:,.0f} ent/s | ETA: {eta:.1f}s",
                 flush=True,
             )
+            gc.collect()
 
-        cands = test_candidates.get(s1_id, [])
+        cands = test_candidates.pop(s1_id, [])
         if not cands or s1_id not in s1_dict:
             continue
         s1_rec = s1_dict[s1_id]
@@ -165,30 +181,18 @@ def run_stage4_inference(
                 total_evaluated_pairs += 1
 
                 if len(pair_features_batch) >= batch_size:
-                    X_batch = np.array(pair_features_batch, dtype=np.float32)
-                    probas = matcher.predict_pair_proba(X_batch)
-                    for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-                        if prob >= (default_threshold - 0.15):
-                            test_candidate_scores[sid].append((cand_id, float(prob)))
+                    _process_batch(pair_features_batch, pair_mapping_batch)
                     pair_features_batch.clear()
                     pair_mapping_batch.clear()
 
     # Remaining pairs
     if pair_features_batch:
-        X_batch = np.array(pair_features_batch, dtype=np.float32)
-        probas = matcher.predict_pair_proba(X_batch)
-        for (sid, cand_id), prob in zip(pair_mapping_batch, probas):
-            if prob >= (default_threshold - 0.15):
-                test_candidate_scores[sid].append((cand_id, float(prob)))
+        _process_batch(pair_features_batch, pair_mapping_batch)
         pair_features_batch.clear()
         pair_mapping_batch.clear()
 
-    from src.postprocessing import filter_matches_with_barrier
-    test_predictions = {}
-    for s1_id, score_list in test_candidate_scores.items():
-        ctry = s1_country_map.get(s1_id, "US")
-        th = country_thresholds.get(ctry, default_threshold)
-        test_predictions[s1_id] = filter_matches_with_barrier(score_list, threshold=th, margin=0.15)
+    del test_candidates
+    gc.collect()
 
     matching_results_path = output_dir / "matching_results.tsv"
     export_matching_results(test_predictions, all_s1_ids, str(matching_results_path))
