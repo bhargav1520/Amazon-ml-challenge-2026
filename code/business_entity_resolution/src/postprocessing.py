@@ -85,12 +85,12 @@ def filter_matches_with_barrier(
 def optimize_threshold(
     candidate_scores: Dict[str, List[Tuple[str, float]]],
     ground_truth: Dict[str, Set[str]],
-    threshold_range: Tuple[float, float, int] = (0.5, 0.98, 49),
+    threshold_range: Tuple[float, float, int] = (0.15, 0.95, 81),
     margin: float = 0.15,
 ) -> Tuple[float, float]:
     """Finds optimal decision threshold maximizing macro-average F_0.5 score."""
     thresholds = np.linspace(threshold_range[0], threshold_range[1], threshold_range[2])
-    best_thresh = 0.85
+    best_thresh = 0.50
     best_score = -1.0
 
     for thresh in thresholds:
@@ -111,7 +111,7 @@ def optimize_country_thresholds(
     candidate_scores: Dict[str, List[Tuple[str, float]]],
     ground_truth: Dict[str, Set[str]],
     country_map: Dict[str, str],
-    threshold_range: Tuple[float, float, int] = (0.5, 0.98, 49),
+    threshold_range: Tuple[float, float, int] = (0.15, 0.95, 81),
     margin: float = 0.15,
 ) -> Tuple[Dict[str, float], float]:
     """Finds per-country optimal decision thresholds maximizing macro-average F_0.5 score."""

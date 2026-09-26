@@ -1,0 +1,137 @@
+============================================================
+🧹 [STAGE 1] PREPROCESSING RAW DATASETS & BUILDING CACHE
+============================================================
+
+[1/4] Processing Train Source 1...
+Saved: processed_data/s1_train_clean.parquet (2206821 rows)
+
+[2/4] Processing Train Pool (Source 2 & Source 3)...
+Saved: processed_data/pool_train_clean.parquet (10320219 rows)
+
+[3/4] Processing Test Source 1...
+Saved: processed_data/s1_test_clean.parquet (1732544 rows)
+
+[4/4] Processing Test Pool (Source 2 & Source 3)...
+Saved: processed_data/pool_test_clean.parquet (9969589 rows)
+
+✅ [STAGE 1 COMPLETE] All preprocessed datasets successfully cached to: processed_data
+
+
+===========================================================
+🔍 [STAGE 2] CANDIDATE BLOCKING & PAIR GENERATION
+============================================================
+
+[1/2] Indexing Train Pool (10.3M rows) & Mining Training Candidates...
+📌 Indexing Train Pool (10,320,219 rows total)...
+  [  0.0%] 1 / 10,320,219 indexed | Speed: 1,000 rows/s | Elapsed: 0.0s | ETA: 10320.2s
+  [ 10.0%] 1,032,022 / 10,320,219 indexed | Speed: 231,557 rows/s | Elapsed: 4.5s | ETA: 40.1s
+  [ 20.0%] 2,064,043 / 10,320,219 indexed | Speed: 229,779 rows/s | Elapsed: 9.0s | ETA: 35.9s
+  [ 30.0%] 3,096,064 / 10,320,219 indexed | Speed: 231,463 rows/s | Elapsed: 13.4s | ETA: 31.2s
+  [ 40.0%] 4,128,085 / 10,320,219 indexed | Speed: 228,142 rows/s | Elapsed: 18.1s | ETA: 27.1s
+  [ 50.0%] 5,160,106 / 10,320,219 indexed | Speed: 225,839 rows/s | Elapsed: 22.8s | ETA: 22.8s
+  [ 60.0%] 6,192,127 / 10,320,219 indexed | Speed: 221,311 rows/s | Elapsed: 28.0s | ETA: 18.7s
+  [ 70.0%] 7,224,148 / 10,320,219 indexed | Speed: 227,274 rows/s | Elapsed: 31.8s | ETA: 13.6s
+  [ 80.0%] 8,256,169 / 10,320,219 indexed | Speed: 231,318 rows/s | Elapsed: 35.7s | ETA: 8.9s
+  [ 90.0%] 9,288,190 / 10,320,219 indexed | Speed: 224,733 rows/s | Elapsed: 41.3s | ETA: 4.6s
+  [100.0%] 10,320,211 / 10,320,219 indexed | Speed: 228,697 rows/s | Elapsed: 45.1s | ETA: 0.0s
+  [100.0%] 10,320,219 / 10,320,219 indexed | Speed: 228,697 rows/s | Elapsed: 45.1s | ETA: 0.0s
+  [100.0%] Finished indexing 10,320,219 rows in 45.1s!
+
+📌 Mining Train Candidates (150,000 entities total)...
+  [  0.0%] 1 / 150,000 entities processed | Speed: 1,000 ent/s | Elapsed: 0.0s | ETA: 150.0s
+  [ 16.7%] 25,001 / 150,000 entities processed | Speed: 20,509 ent/s | Elapsed: 1.2s | ETA: 6.1s
+  [ 33.3%] 50,001 / 150,000 entities processed | Speed: 20,353 ent/s | Elapsed: 2.5s | ETA: 4.9s
+  [ 50.0%] 75,001 / 150,000 entities processed | Speed: 20,350 ent/s | Elapsed: 3.7s | ETA: 3.7s
+  [ 66.7%] 100,001 / 150,000 entities processed | Speed: 20,343 ent/s | Elapsed: 4.9s | ETA: 2.5s
+  [ 83.3%] 125,001 / 150,000 entities processed | Speed: 20,438 ent/s | Elapsed: 6.1s | ETA: 1.2s
+  [100.0%] 150,000 / 150,000 entities processed | Speed: 20,467 ent/s | Elapsed: 7.3s | ETA: 0.0s
+  [100.0%] Finished candidate generation for 150,000 entities in 7.3s!
+
+✅ Saved 150,000 Train Candidate Lists to: cache/train_candidates.pkl
+
+[2/2] Indexing Test Pool (9.9M rows) & Mining Test Candidates (1.73M records)...
+📌 Indexing Test Pool (9,969,589 rows total)...
+  [  0.0%] 1 / 9,969,589 indexed | Speed: 1,000 rows/s | Elapsed: 0.0s | ETA: 9969.6s
+  [ 10.0%] 996,959 / 9,969,589 indexed | Speed: 222,452 rows/s | Elapsed: 4.5s | ETA: 40.3s
+  [ 20.0%] 1,993,917 / 9,969,589 indexed | Speed: 218,835 rows/s | Elapsed: 9.1s | ETA: 36.4s
+  [ 30.0%] 2,990,875 / 9,969,589 indexed | Speed: 220,528 rows/s | Elapsed: 13.6s | ETA: 31.6s
+  [ 40.0%] 3,987,833 / 9,969,589 indexed | Speed: 219,867 rows/s | Elapsed: 18.1s | ETA: 27.2s
+  [ 50.0%] 4,984,791 / 9,969,589 indexed | Speed: 228,649 rows/s | Elapsed: 21.8s | ETA: 21.8s
+  [ 60.0%] 5,981,749 / 9,969,589 indexed | Speed: 223,732 rows/s | Elapsed: 26.7s | ETA: 17.8s
+  [ 70.0%] 6,978,707 / 9,969,589 indexed | Speed: 228,484 rows/s | Elapsed: 30.5s | ETA: 13.1s
+  [ 80.0%] 7,975,665 / 9,969,589 indexed | Speed: 221,780 rows/s | Elapsed: 36.0s | ETA: 9.0s
+  [ 90.0%] 8,972,623 / 9,969,589 indexed | Speed: 226,308 rows/s | Elapsed: 39.6s | ETA: 4.4s
+  [100.0%] 9,969,581 / 9,969,589 indexed | Speed: 230,214 rows/s | Elapsed: 43.3s | ETA: 0.0s
+  [100.0%] 9,969,589 / 9,969,589 indexed | Speed: 230,214 rows/s | Elapsed: 43.3s | ETA: 0.0s
+  [100.0%] Finished indexing 9,969,589 rows in 43.3s!
+
+📌 Mining Test Candidates (1,732,544 entities total)...
+  [  0.0%] 1 / 1,732,544 entities processed | Speed: 1,000 ent/s | Elapsed: 0.0s | ETA: 1732.5s
+  [ 10.0%] 173,255 / 1,732,544 entities processed | Speed: 20,638 ent/s | Elapsed: 8.4s | ETA: 75.6s
+  [ 20.0%] 346,509 / 1,732,544 entities processed | Speed: 20,813 ent/s | Elapsed: 16.6s | ETA: 66.6s
+  [ 30.0%] 519,763 / 1,732,544 entities processed | Speed: 20,880 ent/s | Elapsed: 24.9s | ETA: 58.1s
+  [ 40.0%] 693,017 / 1,732,544 entities processed | Speed: 20,900 ent/s | Elapsed: 33.2s | ETA: 49.7s
+  [ 50.0%] 866,271 / 1,732,544 entities processed | Speed: 20,937 ent/s | Elapsed: 41.4s | ETA: 41.4s
+  [ 60.0%] 1,039,525 / 1,732,544 entities processed | Speed: 20,965 ent/s | Elapsed: 49.6s | ETA: 33.1s
+  [ 70.0%] 1,212,779 / 1,732,544 entities processed | Speed: 19,886 ent/s | Elapsed: 61.0s | ETA: 26.1s
+  [ 80.0%] 1,386,033 / 1,732,544 entities processed | Speed: 20,028 ent/s | Elapsed: 69.2s | ETA: 17.3s
+  [ 90.0%] 1,559,287 / 1,732,544 entities processed | Speed: 20,114 ent/s | Elapsed: 77.5s | ETA: 8.6s
+  [100.0%] 1,732,541 / 1,732,544 entities processed | Speed: 20,202 ent/s | Elapsed: 85.8s | ETA: 0.0s
+  [100.0%] 1,732,544 / 1,732,544 entities processed | Speed: 20,202 ent/s | Elapsed: 85.8s | ETA: 0.0s
+  [100.0%] Finished candidate generation for 1,732,544 entities in 85.8s!
+
+✅ Saved Test Candidate Pairs to: output/candidate_pairs.tsv
+
+✅ [STAGE 2 COMPLETE] Blocking finished successfully!
+
+
+🧠 [STAGE 3] FEATURE EXTRACTION & LIGHTGBM MODEL TRAINING
+============================================================
+
+[1/4] Loading Preprocessed Train Data & Candidates from Cache...
+
+[2/4] Mining Training Pairs & Computing C++ String Features...
+  [  0.0%] 1 / 150,000 entities | Extracted Pairs: 0 | Speed: 1,000 ent/s | ETA: 150.0s
+  [ 10.0%] 15,001 / 150,000 entities | Extracted Pairs: 420,054 | Speed: 704 ent/s | ETA: 191.8s
+  [ 20.0%] 30,001 / 150,000 entities | Extracted Pairs: 839,704 | Speed: 701 ent/s | ETA: 171.3s
+  [ 30.0%] 45,001 / 150,000 entities | Extracted Pairs: 1,259,548 | Speed: 701 ent/s | ETA: 149.7s
+  [ 40.0%] 60,001 / 150,000 entities | Extracted Pairs: 1,679,582 | Speed: 704 ent/s | ETA: 127.8s
+  [ 50.0%] 75,001 / 150,000 entities | Extracted Pairs: 2,099,514 | Speed: 707 ent/s | ETA: 106.1s
+  [ 60.0%] 90,001 / 150,000 entities | Extracted Pairs: 2,519,781 | Speed: 709 ent/s | ETA: 84.6s
+  [ 70.0%] 105,001 / 150,000 entities | Extracted Pairs: 2,939,998 | Speed: 711 ent/s | ETA: 63.3s
+  [ 80.0%] 120,001 / 150,000 entities | Extracted Pairs: 3,359,788 | Speed: 712 ent/s | ETA: 42.1s
+  [ 90.0%] 135,001 / 150,000 entities | Extracted Pairs: 3,779,310 | Speed: 713 ent/s | ETA: 21.0s
+  [100.0%] 150,000 / 150,000 entities | Extracted Pairs: 4,199,113 | Speed: 682 ent/s | ETA: 0.0s
+
+📊 Training Matrix: 4,199,142 pairs, 32 features (Positives: 518,775, Negatives: 3,680,367)
+
+[3/4] Fitting Dual Model Ensemble (150 trees, lr=0.08)...
+
+[4/4] Calibrating Macro F_0.5 Decision Thresholds on 25k Validation Entities...
+  [  0.0%] 1 / 25,000 val entities | Speed: 1,000 ent/s | ETA: 25.0s
+  [ 20.0%] 5,001 / 25,000 val entities | Speed: 126 ent/s | ETA: 158.4s
+  [ 40.0%] 10,001 / 25,000 val entities | Speed: 126 ent/s | ETA: 119.4s
+  [ 60.0%] 15,001 / 25,000 val entities | Speed: 126 ent/s | ETA: 79.6s
+  [ 80.0%] 20,001 / 25,000 val entities | Speed: 126 ent/s | ETA: 39.7s
+  [100.0%] 25,000 / 25,000 val entities | Speed: 126 ent/s | ETA: 0.0s
+
+
+=================================================================
+🏆 [LOCAL COMPETITION JUDGING REPORT]
+=================================================================
+📊 Evaluated Entities:       25,000
+🎯 Overall Macro F_0.5 Score: 0.2291
+🎯 Micro Precision:          0.9568
+🎯 Micro Recall:             0.1230
+🛡️ Singleton Accuracy:       96.37% (1,380 / 1,432)
+❌ False Positives (Alarms): 480 | False Negatives (Misses): 75,851
+
+🌍 [Country-Wise Performance Breakdown]
+  - US          : Macro F_0.5 = 0.2291 (25,000 entities)
+=================================================================
+
+✅ Saved Trained Model: models/matcher_lgbm.pkl
+✅ Saved Global Threshold: models/best_threshold.txt
+✅ Saved Country Thresholds: models/country_thresholds.json
+
+✅ [STAGE 3 COMPLETE] Model trained, evaluated, and saved successfully!

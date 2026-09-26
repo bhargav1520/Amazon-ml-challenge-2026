@@ -78,7 +78,7 @@ class EntityMatcherModel:
                 min_child_samples=self.min_child_samples,
                 subsample=self.subsample,
                 colsample_bytree=self.colsample_bytree,
-                scale_pos_weight=0.6,
+                scale_pos_weight=1.0,
                 random_state=self.random_state + fold_idx,
                 n_jobs=-1,
                 importance_type="gain",
