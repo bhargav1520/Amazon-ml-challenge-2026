@@ -271,6 +271,8 @@ class MultiIndexBlocker:
             allowed_name = self._allowed_name_tokens.get(country, set())
             allowed_addr = self._allowed_addr_tokens.get(country, set())
 
+            MAX_POSTINGS = 400
+
             # 1. Rare Name Tokens (+3 pts each)
             name_toks = extract_blocking_tokens(c_name, max_tokens=6)
             rare_name_toks = [t for t in name_toks if t in allowed_name]
@@ -278,7 +280,8 @@ class MultiIndexBlocker:
             for tok in rare_name_toks:
                 postings = c_ntok_idx.get(tok)
                 if postings:
-                    for match_id in postings:
+                    p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                    for match_id in p_iter:
                         candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 3
 
             # 2. Name Bigrams (+5 pts each)
@@ -286,7 +289,8 @@ class MultiIndexBlocker:
             for bk in extract_bigram_keys(rare_name_toks):
                 postings = c_bi_idx.get(bk)
                 if postings:
-                    for match_id in postings:
+                    p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                    for match_id in p_iter:
                         candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 5
 
             # 3. Rare Address Tokens (+2 pts each)
@@ -296,7 +300,8 @@ class MultiIndexBlocker:
             for tok in rare_addr_toks:
                 postings = c_atok_idx.get(tok)
                 if postings:
-                    for match_id in postings:
+                    p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                    for match_id in p_iter:
                         candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 2
 
             # 4. Address Numbers (+4 pts each)
@@ -309,7 +314,8 @@ class MultiIndexBlocker:
                         if len(num) >= 3:
                             postings = c_num_idx.get(num)
                             if postings:
-                                for match_id in postings:
+                                p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                                for match_id in p_iter:
                                     candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 4
             else:
                 nums_set = raw_nums[i]
@@ -318,7 +324,8 @@ class MultiIndexBlocker:
                         if len(num) >= 3:
                             postings = c_num_idx.get(num)
                             if postings:
-                                for match_id in postings:
+                                p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                                for match_id in p_iter:
                                     candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 4
 
             if candidate_scores:
