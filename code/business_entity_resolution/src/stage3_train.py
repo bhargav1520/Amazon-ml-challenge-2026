@@ -59,14 +59,16 @@ def run_stage3_train(
             "name": nm,
             "address": addr,
             "combined": comb,
+            "country": ctry,
             "numbers": set(nums.split(",")) if nums else set(),
         }
-        for eid, nm, addr, comb, nums in zip(
+        for eid, nm, addr, comb, nums, ctry in zip(
             pool_train["entity_id"].values,
             pool_train["clean_name"].values,
             pool_train["clean_address"].values,
             pool_train["combined_text"].values,
             pool_train["address_numbers_str"].values,
+            pool_train["country"].values,
         )
     }
     del pool_train
@@ -78,14 +80,16 @@ def run_stage3_train(
             "name": nm,
             "address": addr,
             "combined": comb,
+            "country": ctry,
             "numbers": set(nums.split(",")) if nums else set(),
         }
-        for eid, nm, addr, comb, nums in zip(
+        for eid, nm, addr, comb, nums, ctry in zip(
             s1_train["entity_id"].values,
             s1_train["clean_name"].values,
             s1_train["clean_address"].values,
             s1_train["combined_text"].values,
             s1_train["address_numbers_str"].values,
+            s1_train["country"].values,
         )
     }
     del s1_train
