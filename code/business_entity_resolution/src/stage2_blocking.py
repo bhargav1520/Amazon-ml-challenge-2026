@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--cache-dir", type=str, default="processed_data")
     parser.add_argument("--output-dir", type=str, default="output")
     parser.add_argument("--candidates-cache-dir", type=str, default="cache")
-    parser.add_argument("--max-candidates", type=int, default=25)
+    parser.add_argument("--max-candidates", type=int, default=50)
     parser.add_argument("--max-train-sample", type=int, default=150000)
     args = parser.parse_args()
 

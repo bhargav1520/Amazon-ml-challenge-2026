@@ -23,11 +23,11 @@ class EntityMatcherModel:
 
     def __init__(
         self,
-        n_estimators: int = 200,
-        learning_rate: float = 0.06,
+        n_estimators: int = 300,
+        learning_rate: float = 0.05,
         max_depth: int = 7,
-        num_leaves: int = 45,
-        min_child_samples: int = 1,
+        num_leaves: int = 63,
+        min_child_samples: int = 5,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,
         n_folds: int = 3,
@@ -78,7 +78,9 @@ class EntityMatcherModel:
                 min_child_samples=self.min_child_samples,
                 subsample=self.subsample,
                 colsample_bytree=self.colsample_bytree,
-                scale_pos_weight=1.0,
+                is_unbalance=True,          # handles 7:1 neg:pos ratio internally
+                reg_alpha=0.1,              # L1 for sparsity
+                reg_lambda=1.0,             # L2 for generalization
                 random_state=self.random_state + fold_idx,
                 n_jobs=-1,
                 importance_type="gain",

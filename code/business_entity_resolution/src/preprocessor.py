@@ -121,4 +121,6 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df["clean_address"] = [clean_address(x) for x in df["business_address"]]
     df["combined_text"] = df["clean_name"] + " " + df["clean_address"]
     df["address_numbers"] = [extract_numbers(x) for x in df["clean_address"]]
+    # String-serialized version for fast parquet I/O and new blocker compatibility
+    df["address_numbers_str"] = [",".join(sorted(s)) for s in df["address_numbers"]]
     return df
