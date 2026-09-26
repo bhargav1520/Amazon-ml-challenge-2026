@@ -69,12 +69,24 @@ def extract_bigram_keys(tokens: List[str]) -> List[str]:
     return bigrams
 
 
+def extract_char_shingles(text: str, n: int = 3, max_shingles: int = 6) -> List[str]:
+    """Extracts character 3-gram shingles for typo and transliteration resilience."""
+    clean = "".join(c for c in str(text).lower() if c.isalnum())
+    if len(clean) < n:
+        return []
+    shingles = [clean[i : i + n] for i in range(len(clean) - n + 1)]
+    if len(shingles) > max_shingles:
+        step = max(1, len(shingles) // max_shingles)
+        shingles = shingles[::step][:max_shingles]
+    return list(set(shingles))
+
+
 class MultiIndexBlocker:
-    """High-recall candidate generator using dual Name + Address TF-IDF filtered inverted indexes."""
+    """High-recall candidate generator using multi-signal inverted indexes."""
 
     def __init__(
         self,
-        max_candidates_per_entity: int = 50,
+        max_candidates_per_entity: int = 60,
         idf_max_fraction: float = IDF_MAX_FRACTION,
     ):
         self.max_candidates_per_entity = max_candidates_per_entity
@@ -85,14 +97,17 @@ class MultiIndexBlocker:
         self.addr_token_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
         self.bigram_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
         self.number_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
+        self.shingle_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
 
         # IDF frequencies: country -> token -> count
         self._name_token_freq: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         self._addr_token_freq: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self._shingle_freq: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         self._pool_size_per_country: Dict[str, int] = defaultdict(int)
 
         self._allowed_name_tokens: Dict[str, Set[str]] = {}
         self._allowed_addr_tokens: Dict[str, Set[str]] = {}
+        self._allowed_shingles: Dict[str, Set[str]] = {}
 
     def _build_idf_filter(self, pool_df: pd.DataFrame) -> None:
         """Counts document frequencies for name and address tokens to filter out overly frequent terms."""
@@ -118,6 +133,13 @@ class MultiIndexBlocker:
                     self._addr_token_freq[country][tok] += 1
                     seen_addr.add(tok)
 
+            # Shingles
+            seen_sh = set()
+            for sh in extract_char_shingles(str(names[i])):
+                if sh not in seen_sh:
+                    self._shingle_freq[country][sh] += 1
+                    seen_sh.add(sh)
+
         for country in self._pool_size_per_country:
             pool_sz = max(self._pool_size_per_country[country], 1)
 
@@ -131,10 +153,16 @@ class MultiIndexBlocker:
                 tok for tok, cnt in a_freq.items() if cnt / pool_sz <= self.idf_max_fraction
             }
 
+            sh_freq = self._shingle_freq[country]
+            self._allowed_shingles[country] = {
+                sh for sh, cnt in sh_freq.items() if cnt / pool_sz <= 0.003
+            }
+
             print(
                 f"    [{country}] Pool: {pool_sz:,} | "
                 f"Allowed Name Tokens: {len(self._allowed_name_tokens[country]):,} | "
-                f"Allowed Address Tokens: {len(self._allowed_addr_tokens[country]):,}",
+                f"Allowed Address Tokens: {len(self._allowed_addr_tokens[country]):,} | "
+                f"Allowed Shingles: {len(self._allowed_shingles[country]):,}",
                 flush=True,
             )
 
@@ -219,6 +247,13 @@ class MultiIndexBlocker:
                         if len(num) >= 3:
                             c_num_idx[num].append(eid)
 
+            # 5. Character Shingles
+            c_sh_idx = self.shingle_index[country]
+            allowed_sh = self._allowed_shingles.get(country, set())
+            for sh in extract_char_shingles(c_name):
+                if sh in allowed_sh:
+                    c_sh_idx[sh].append(eid)
+
         total_time = time.time() - start_time
         print(f"  [100.0%] Finished indexing {total_rows:,} rows in {total_time:.1f}s!\n", flush=True)
 
@@ -270,6 +305,7 @@ class MultiIndexBlocker:
             candidate_scores: Dict[str, int] = {}
             allowed_name = self._allowed_name_tokens.get(country, set())
             allowed_addr = self._allowed_addr_tokens.get(country, set())
+            allowed_sh = self._allowed_shingles.get(country, set())
 
             MAX_POSTINGS = 400
 
@@ -327,6 +363,16 @@ class MultiIndexBlocker:
                                 p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
                                 for match_id in p_iter:
                                     candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 4
+
+            # 5. Character Shingles (+1 pt each)
+            c_sh_idx = self.shingle_index.get(country, {})
+            for sh in extract_char_shingles(c_name):
+                if sh in allowed_sh:
+                    postings = c_sh_idx.get(sh)
+                    if postings:
+                        p_iter = postings[:MAX_POSTINGS] if len(postings) > MAX_POSTINGS else postings
+                        for match_id in p_iter:
+                            candidate_scores[match_id] = candidate_scores.get(match_id, 0) + 1
 
             if candidate_scores:
                 if len(candidate_scores) <= self.max_candidates_per_entity:

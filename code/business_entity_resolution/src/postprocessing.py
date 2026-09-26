@@ -58,15 +58,25 @@ def compute_macro_f05(
 def filter_matches_with_barrier(
     score_list: List[Tuple[str, float]],
     threshold: float = 0.50,
-    margin: float = None,
+    margin: float = 0.12,
 ) -> List[str]:
-    """Filters candidate scores applying calibrated decision threshold.
-    Accepts all candidates with probability >= threshold to capture multiple true matches.
+    """Filters candidate scores applying calibrated decision threshold with margin recovery.
+    - If best candidate score < threshold, treats entity as singleton -> returns [].
+    - If best candidate score >= threshold, accepts top candidate and all candidates within margin.
     """
     if not score_list:
         return []
 
-    valid = [cid for cid, score in score_list if score >= threshold]
+    sorted_scores = sorted(score_list, key=lambda x: x[1], reverse=True)
+    top_cid, top_score = sorted_scores[0]
+    if top_score < threshold:
+        return []
+
+    if margin is None:
+        return [cid for cid, score in sorted_scores if score >= threshold]
+
+    cutoff = max(threshold - margin, top_score - margin)
+    valid = [cid for cid, score in sorted_scores if score >= cutoff]
     return valid
 
 
