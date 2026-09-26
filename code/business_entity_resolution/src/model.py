@@ -90,14 +90,25 @@ class EntityMatcherModel:
             self.lgb_models.append(lgbm)
 
             if self.enable_ensemble:
-                cb = CatBoostClassifier(
-                    iterations=self.n_estimators,
-                    learning_rate=self.learning_rate,
-                    depth=min(self.max_depth, 7),
-                    random_seed=self.random_state + fold_idx,
-                    thread_count=-1,
-                    verbose=False,
-                )
+                try:
+                    import torch
+                    use_gpu = torch.cuda.is_available()
+                except Exception:
+                    use_gpu = False
+
+                cb_kwargs = {
+                    "iterations": self.n_estimators,
+                    "learning_rate": self.learning_rate,
+                    "depth": min(self.max_depth, 7),
+                    "random_seed": self.random_state + fold_idx,
+                    "verbose": False,
+                }
+                if use_gpu:
+                    cb_kwargs["task_type"] = "GPU"
+                else:
+                    cb_kwargs["thread_count"] = -1
+
+                cb = CatBoostClassifier(**cb_kwargs)
                 cb.fit(X_f, y_f)
                 self.cb_models.append(cb)
 
