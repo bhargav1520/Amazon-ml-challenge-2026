@@ -27,7 +27,7 @@ def run_stage2_blocking(
     cache_dir: Path = Path("processed_data"),
     output_dir: Path = Path("output"),
     candidates_cache_dir: Path = Path("cache"),
-    max_candidates: int = 25,
+    max_candidates: int = 50,
     max_train_sample_entities: int = 150000,
 ) -> None:
     """Runs candidate generation with real-time progress bars and zero deserialization lag."""
