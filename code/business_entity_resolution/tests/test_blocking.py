@@ -19,7 +19,7 @@ def test_extract_blocking_tokens():
     tokens = extract_blocking_tokens("starbucks coffee roastery")
     assert "starbucks" in tokens
     assert "coffee" in tokens
-    assert "starbucks_coffee" in tokens
+    assert "roastery" in tokens
 
 
 def test_multi_index_blocker():

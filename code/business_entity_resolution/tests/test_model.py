@@ -19,10 +19,10 @@ def test_entity_matcher_model():
     f_pos = extract_pair_features(r1, r_pos)
     f_neg = extract_pair_features(r1, r_neg)
 
-    X = np.array([f_pos, f_neg, f_pos, f_neg], dtype=np.float32)
-    y = np.array([1, 0, 1, 0], dtype=np.int32)
+    X = np.tile(np.array([f_pos, f_neg], dtype=np.float32), (15, 1))
+    y = np.tile(np.array([1, 0], dtype=np.int32), 15)
 
-    model = EntityMatcherModel(n_estimators=10)
+    model = EntityMatcherModel(n_estimators=10, min_child_samples=1)
     model.train_on_pairs(X, y)
 
     scores = model.score_candidates(r1, [r_pos, r_neg])
