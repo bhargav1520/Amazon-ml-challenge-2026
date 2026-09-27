@@ -10,6 +10,8 @@ import pandas as pd
 
 # Precompiled regex patterns for speed and low memory
 LEGAL_SUFFIXES_RAW = [
+    (re.compile(r"\b(doing\s+business\s+as|d\.?b\.?a\.?|trading\s+as|t\.?a\.?|a\.?k\.?a\.?)\b", re.I), " "),
+    (re.compile(r"\b(dr|prof|mrs?|ms|shri|smt)\b\.?\s+", re.I), " "),
     (re.compile(r"\bprivate\s+limited\b", re.I), "pvt ltd"),
     (re.compile(r"\bpvt\.?\s*ltd\.?\b", re.I), "pvt ltd"),
     (re.compile(r"\bpvt\s*limited\b", re.I), "pvt ltd"),
@@ -25,6 +27,9 @@ LEGAL_SUFFIXES_RAW = [
     (re.compile(r"\bltd\.?\b", re.I), "ltd"),
     (re.compile(r"\bcompany\b", re.I), "co"),
     (re.compile(r"\bco\.?\b", re.I), "co"),
+    (re.compile(r"\bcie\b\.?", re.I), "compagnie"),
+    (re.compile(r"\bst[eé]\b\.?", re.I), "societe"),
+    (re.compile(r"\bets\b\.?", re.I), "etablissements"),
     (re.compile(r"\bs\.?a\.?r\.?l\.?\b", re.I), "sarl"),
     (re.compile(r"\bs\.?a\.?s\.?\b", re.I), "sas"),
     (re.compile(r"\bs\.?a\.?\b", re.I), "sa"),
@@ -33,6 +38,8 @@ LEGAL_SUFFIXES_RAW = [
 ]
 
 ADDRESS_ABBREVIATIONS = [
+    (re.compile(r"\b(door\s*no|d\.?\s*no|plot\s*no|flat\s*no|house\s*no|h\.?\s*no)\b\.?", re.I), "no"),
+    (re.compile(r"\b(next\s+to|behind|adj\.?|adjacent\s+to)\b", re.I), "near"),
     (re.compile(r"\bst\.?\b", re.I), "street"),
     (re.compile(r"\bstreet\b", re.I), "street"),
     (re.compile(r"\brd\.?\b", re.I), "road"),
