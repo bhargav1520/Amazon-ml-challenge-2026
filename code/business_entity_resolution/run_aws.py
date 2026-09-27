@@ -20,16 +20,26 @@ from src.stage4_inference import run_stage4_inference
 def find_dataset_dir() -> Path:
     candidates = [
         BASE_DIR.parent.parent / "student_resource" / "dataset",
+        BASE_DIR.parent.parent / "dataset",
         BASE_DIR / "dataset",
+        Path.cwd() / "dataset",
+        Path("/workspaces/Amazon-ml-challenge-2026/dataset"),
+        Path("/workspaces/Amazon-ml-challenge-2026/student_resource/dataset"),
         Path.home() / "dataset",
         Path("/home/ubuntu/dataset"),
     ]
     for c in candidates:
         if (c / "train" / "train_ground_truth.tsv").exists():
             return c.resolve()
+
+    # Recursive fallback search
+    for root in [BASE_DIR.parent.parent, Path.cwd(), Path("/workspaces"), Path.home()]:
+        matches = list(root.glob("**/train_ground_truth.tsv"))
+        if matches:
+            return matches[0].parent.parent.resolve()
+
     raise FileNotFoundError(
-        "Could not find dataset directory! Looked in:\n"
-        + "\n".join(str(c) for c in candidates)
+        "Could not find dataset directory! Please place your 'train' and 'test' folders inside 'dataset/' or 'student_resource/dataset/'."
     )
 
 
