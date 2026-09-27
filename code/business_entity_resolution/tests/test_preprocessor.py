@@ -27,12 +27,17 @@ def test_strip_accents():
 def test_clean_business_name():
     # US / India variations
     assert "pvt ltd" in clean_business_name("Infosys Pvt. Ltd.")
-    assert "inc" in clean_business_name("Apple Corporation")
+    # FIX: 'corporation' is intentionally NOT mapped to 'inc' anymore.
+    # The old corp→inc mapping destroyed discriminative suffix signal
+    # (merged "XYZ Corp" with "XYZ Inc" when they are different entities).
+    # Now 'corporation' remains as 'corporation' in the clean form.
+    assert "corporation" in clean_business_name("Apple Corporation")
     assert "and" in clean_business_name("Johnson & Johnson")
 
     # French variations
     assert "sarl" in clean_business_name("Dupont S.A.R.L.")
     assert "sas" in clean_business_name("L'Oreal S.A.S.")
+
 
 
 def test_clean_address():
