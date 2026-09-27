@@ -35,8 +35,9 @@ def run_stage3_train(
     models_dir: Path = Path("models"),
     gt_file: Path = Path("student_resource/dataset/train/train_ground_truth.tsv"),
     max_train_entities: int = 150000,
-    n_estimators: int = 150,
-    learning_rate: float = 0.08,
+    n_estimators: int = 600,          # raised from 300 - 5M+ pairs need more trees to converge
+    learning_rate: float = 0.05,      # lowered from 0.08 for better generalization
+    hard_negative_multiplier: int = 3, # hard-negative mining: up-sample near-miss negatives
 ) -> None:
     """Trains the pairwise entity resolution model with live progress tracking."""
     cache_dir = Path(cache_dir)
@@ -152,7 +153,38 @@ def run_stage3_train(
     y_vec = np.array(y_train_list, dtype=np.int32)
     print(f"\n[METRICS] Training Matrix: {X_mat.shape[0]:,} pairs, {X_mat.shape[1]} features (Positives: {np.sum(y_vec):,}, Negatives: {len(y_vec) - np.sum(y_vec):,})", flush=True)
 
-    del X_train_list, y_train_list
+    # Hard-negative mining: use a held-out 20% split to train the quick model.
+    # FIX (Bottleneck 1): Previously trained on ALL of X_mat then scored the same data,
+    # causing tree models to deflate in-sample negative scores to <0.1, missing real
+    # hard negatives. Now we split 80/20 and score the held-out portion only.
+    print(f"\n[HARD NEG] Mining hard negatives (x{hard_negative_multiplier} up-sampling for score 0.3-0.8)...", flush=True)
+    from src.model import EntityMatcherModel as _TmpModel
+    n_total = len(X_mat)
+    np.random.seed(0)
+    perm = np.random.permutation(n_total)
+    split = int(0.8 * n_total)
+    train_idx_hn, holdout_idx_hn = perm[:split], perm[split:]
+    quick_model = _TmpModel(n_estimators=50, learning_rate=0.1, n_folds=1, enable_ensemble=False)
+    quick_model.train_on_pairs(X_mat[train_idx_hn], y_vec[train_idx_hn])
+    # Score only the held-out negatives — these scores are out-of-sample and unbiased
+    holdout_neg_mask = y_vec[holdout_idx_hn] == 0
+    holdout_neg_idx = holdout_idx_hn[holdout_neg_mask]
+    if len(holdout_neg_idx) > 0:
+        neg_scores = quick_model.predict_pair_proba(X_mat[holdout_neg_idx])
+        hard_neg_mask = (neg_scores >= 0.3) & (neg_scores <= 0.8)
+        hard_neg_idx = holdout_neg_idx[hard_neg_mask]
+        print(f"  Hard negatives found: {len(hard_neg_idx):,} of {len(holdout_neg_idx):,} held-out negatives", flush=True)
+        if len(hard_neg_idx) > 0:
+            extra_X = np.tile(X_mat[hard_neg_idx], (hard_negative_multiplier - 1, 1))
+            extra_y = np.zeros(len(extra_X), dtype=np.int32)
+            X_mat = np.vstack([X_mat, extra_X])
+            y_vec = np.concatenate([y_vec, extra_y])
+            print(f"  After hard-neg augmentation: {X_mat.shape[0]:,} total pairs", flush=True)
+    del quick_model
+    import gc as _gc
+    _gc.collect()
+
+    # X_train_list and y_train_list already consumed above
     gc.collect()
 
     # 3. Fit Model Ensemble
@@ -162,9 +194,23 @@ def run_stage3_train(
     del X_mat, y_vec
     gc.collect()
 
-    # 4. Calibrate F_0.5 Threshold on validation set with country partitioning
-    print("\n[4/4] Calibrating Macro F_0.5 Decision Thresholds on 25k Validation Entities...", flush=True)
-    val_keys = sample_keys[:25000]
+    # 4. Calibrate F_0.5 Threshold on HELD-OUT validation set with country partitioning.
+    # FIX (Bug 2): val_keys must come from entities NOT in sample_keys to avoid
+    # in-sample probability inflation skewing the threshold too conservative.
+    print("\n[4/4] Calibrating Macro F_0.5 Decision Thresholds on Held-Out Validation Entities...", flush=True)
+    sample_keys_set = set(sample_keys)
+    held_out_keys = [k for k in train_keys if k not in sample_keys_set]
+    if len(held_out_keys) >= 25000:
+        val_keys = held_out_keys[:25000]
+        print(f"  Using {len(val_keys):,} true held-out entities for threshold calibration.", flush=True)
+    elif len(held_out_keys) >= 5000:
+        val_keys = held_out_keys
+        print(f"  Using {len(val_keys):,} available held-out entities (fewer than 25k but still unseen).", flush=True)
+    else:
+        # Fallback: no held-out entities available (dataset smaller than max_train_entities).
+        # Use the LAST 25% of sample_keys — seen less often in later tree rounds.
+        val_keys = sample_keys[-(len(sample_keys) // 4):]
+        print(f"  WARN: No held-out entities available. Using last {len(val_keys):,} of sample_keys as approximate val.", flush=True)
     total_val = len(val_keys)
     val_log_step = max(5000, total_val // 5)
     val_start = time.time()
@@ -205,7 +251,7 @@ def run_stage3_train(
     for s1_id, score_list in val_candidate_scores.items():
         c = country_map.get(s1_id, "US")
         th = country_thresholds.get(c, best_global_thresh)
-        val_predictions[s1_id] = set(filter_matches_with_barrier(score_list, threshold=th, margin=0.15))
+        val_predictions[s1_id] = set(filter_matches_with_barrier(score_list, threshold=th, margin=0.08, max_matches=12))
 
     print("\n")
     run_local_evaluation(val_predictions, val_ground_truth, country_map)
@@ -233,8 +279,9 @@ def main():
     parser.add_argument("--models-dir", type=str, default="models")
     parser.add_argument("--gt-file", type=str, default="student_resource/dataset/train/train_ground_truth.tsv")
     parser.add_argument("--max-train-entities", type=int, default=150000)
-    parser.add_argument("--n-estimators", type=int, default=150)
-    parser.add_argument("--learning-rate", type=float, default=0.08)
+    parser.add_argument("--n-estimators", type=int, default=600)
+    parser.add_argument("--learning-rate", type=float, default=0.05)
+    parser.add_argument("--hard-negative-multiplier", type=int, default=3)
     args = parser.parse_args()
 
     run_stage3_train(
@@ -245,6 +292,7 @@ def main():
         max_train_entities=args.max_train_entities,
         n_estimators=args.n_estimators,
         learning_rate=args.learning_rate,
+        hard_negative_multiplier=args.hard_negative_multiplier,
     )
 
 

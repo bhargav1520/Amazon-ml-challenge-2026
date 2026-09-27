@@ -9,24 +9,21 @@ import pandas as pd
 
 
 # Precompiled regex patterns for speed and low memory
+# FIX: Removed aggressive cross-mapping (corp→inc, limited→ltd, company→co) which
+# was merging unrelated entities and destroying discriminative suffix signals.
+# Now only normalises redundant aliases (pvt limited→pvt ltd, s.a.r.l→sarl, etc.)
 LEGAL_SUFFIXES_RAW = [
     (re.compile(r"\b(doing\s+business\s+as|d\.?b\.?a\.?|trading\s+as|t\.?a\.?|a\.?k\.?a\.?)\b", re.I), " "),
     (re.compile(r"\b(dr|prof|mrs?|ms|shri|smt)\b\.?\s+", re.I), " "),
     (re.compile(r"\bprivate\s+limited\b", re.I), "pvt ltd"),
     (re.compile(r"\bpvt\.?\s*ltd\.?\b", re.I), "pvt ltd"),
     (re.compile(r"\bpvt\s*limited\b", re.I), "pvt ltd"),
-    (re.compile(r"\bcorporation\b", re.I), "inc"),
-    (re.compile(r"\bcorp\.?\b", re.I), "inc"),
-    (re.compile(r"\bincorporated\b", re.I), "inc"),
-    (re.compile(r"\binc\.?\b", re.I), "inc"),
+    # Normalise LLC/LLP variants to canonical form
     (re.compile(r"\blimited\s+liability\s+company\b", re.I), "llc"),
     (re.compile(r"\bl\.?l\.?c\.?\b", re.I), "llc"),
     (re.compile(r"\blimited\s+liability\s+partnership\b", re.I), "llp"),
     (re.compile(r"\bl\.?l\.?p\.?\b", re.I), "llp"),
-    (re.compile(r"\blimited\b", re.I), "ltd"),
-    (re.compile(r"\bltd\.?\b", re.I), "ltd"),
-    (re.compile(r"\bcompany\b", re.I), "co"),
-    (re.compile(r"\bco\.?\b", re.I), "co"),
+    # French legal forms
     (re.compile(r"\bcie\b\.?", re.I), "compagnie"),
     (re.compile(r"\bst[eé]\b\.?", re.I), "societe"),
     (re.compile(r"\bets\b\.?", re.I), "etablissements"),

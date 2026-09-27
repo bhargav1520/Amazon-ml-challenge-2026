@@ -1,6 +1,15 @@
 """Feature engineering module for Business Entity Resolution.
 Computes high-dimensional string distance, token set, phonetic Soundex, and numerical
 features on candidate record pairs using rapidfuzz (C++ engine).
+
+KEY ADDITIONS:
+- name_token_jaccard: Token-level Jaccard (stronger than token_set_ratio for short names)
+- name_prefix3_match: First 3 characters match (transliteration resilience)
+- name_bigram_jaccard: Character bigram Jaccard (catches transpositions)
+- addr_token_jaccard: Token-level address Jaccard
+- name_is_empty / addr_is_empty: Null-signal features
+- num_conflict_ratio: Fraction of conflicting address numbers (stronger penalty)
+- name_char_ngram_jaccard: 3-gram Jaccard for phonetic/spelling robustness
 """
 
 from typing import Dict, List, Set, Tuple, Any
@@ -30,6 +39,44 @@ def soundex(token: str) -> str:
     return ("".join(code) + "000")[:4]
 
 
+def _char_ngrams(text: str, n: int = 3) -> Set[str]:
+    """Returns the set of character n-grams from text."""
+    clean = "".join(c for c in text.lower() if c.isalnum())
+    if len(clean) < n:
+        return set()
+    return {clean[i:i+n] for i in range(len(clean) - n + 1)}
+
+
+def _token_jaccard(s1: str, s2: str) -> float:
+    """Token-level Jaccard similarity between two strings."""
+    t1 = set(s1.split())
+    t2 = set(s2.split())
+    if not t1 and not t2:
+        return 1.0
+    if not t1 or not t2:
+        return 0.0
+    return len(t1 & t2) / len(t1 | t2)
+
+
+def _bigram_jaccard(s1: str, s2: str) -> float:
+    """Word-bigram Jaccard similarity (order-invariant sorted pairs).
+    
+    FIX: Returns 0.0 when either side is a single-word (no bigrams possible).
+    The old code returned 1.0 when BOTH sides had no bigrams, incorrectly
+    treating e.g. 'Walmart' vs 'Target' as maximally similar.
+    """
+    t1 = s1.split()
+    t2 = s2.split()
+    def bigrams(toks):
+        return {tuple(sorted([toks[i], toks[i+1]])) for i in range(len(toks)-1)}
+    b1 = bigrams(t1)
+    b2 = bigrams(t2)
+    if not b1 or not b2:
+        # Cannot form bigrams on either side — undefined, treat as 0 (no evidence of similarity)
+        return 0.0
+    return len(b1 & b2) / len(b1 | b2)
+
+
 FEATURE_NAMES = [
     # 1. Name Similarities & Phonetics
     "name_ratio",
@@ -45,6 +92,12 @@ FEATURE_NAMES = [
     "name_first_token_match",
     "name_phonetic_jaccard",
     "name_first_phonetic_match",
+    # NEW: richer name features
+    "name_token_jaccard",
+    "name_prefix3_match",
+    "name_bigram_jaccard",
+    "name_char_ngram_jaccard",
+    "name_is_empty",
     # 2. Address Similarities
     "addr_ratio",
     "addr_partial_ratio",
@@ -56,12 +109,16 @@ FEATURE_NAMES = [
     "addr_len_ratio",
     "addr_exact",
     "addr_containment",
+    # NEW: richer address features
+    "addr_token_jaccard",
+    "addr_is_empty",
     # 3. Number / Postal Overlap & Penalty
     "number_jaccard",
     "number_intersection_count",
     "has_matching_number",
     "num_mismatch_penalty",
     "num_exact_match",
+    "num_conflict_ratio",   # NEW: proportion of conflicting numbers
     # 4. Combined text & Origin metadata
     "comb_sort",
     "comb_set",
@@ -89,6 +146,11 @@ def extract_pair_features(
     nums1: Set[str] = s1_record.get("numbers", set())
     nums2: Set[str] = cand_record.get("numbers", set())
     cand_id: str = cand_record.get("id", "")
+
+    # Safety: ensure strings
+    n1, n2 = str(n1) if n1 else "", str(n2) if n2 else ""
+    a1, a2 = str(a1) if a1 else "", str(a2) if a2 else ""
+    c1, c2 = str(c1) if c1 else "", str(c2) if c2 else ""
 
     # 1. Name Features
     name_ratio = fuzz.ratio(n1, n2) / 100.0
@@ -118,6 +180,22 @@ def extract_pair_features(
         name_phonetic_jaccard = 0.0
     name_first_phonetic_match = 1.0 if (sx1 and sx2 and sx1[0] and sx1[0] == sx2[0]) else 0.0
 
+    # NEW name features
+    name_token_jaccard = _token_jaccard(n1, n2)
+    # Prefix-3 match: first 3 alphanum chars match
+    n1_clean = "".join(c for c in n1 if c.isalnum())
+    n2_clean = "".join(c for c in n2 if c.isalnum())
+    name_prefix3_match = 1.0 if (len(n1_clean) >= 3 and len(n2_clean) >= 3 and n1_clean[:3] == n2_clean[:3]) else 0.0
+    name_bigram_jaccard = _bigram_jaccard(n1, n2)
+    # Char 3-gram Jaccard
+    ng1 = _char_ngrams(n1, 3)
+    ng2 = _char_ngrams(n2, 3)
+    if ng1 and ng2:
+        name_char_ngram_jaccard = float(len(ng1 & ng2) / len(ng1 | ng2))
+    else:
+        name_char_ngram_jaccard = 0.0
+    name_is_empty = 1.0 if (not n1 or not n2) else 0.0
+
     # 2. Address Features
     addr_ratio = fuzz.ratio(a1, a2) / 100.0
     addr_partial_ratio = fuzz.partial_ratio(a1, a2) / 100.0
@@ -130,9 +208,13 @@ def extract_pair_features(
     addr_len_ratio = float(min(len(a1), len(a2)) / max_al)
     addr_exact = 1.0 if (a1 and a2 and a1 == a2) else 0.0
     addr_containment = 1.0 if (a1 and a2 and (a1 in a2 or a2 in a1)) else 0.0
+    # NEW addr features
+    addr_token_jaccard = _token_jaccard(a1, a2)
+    addr_is_empty = 1.0 if (not a1 or not a2) else 0.0
 
     # 3. Number / Postal Overlap & Conflict Penalty
     if nums1 and nums2:
+        # Both sides have numbers: full overlap metrics
         inter = nums1.intersection(nums2)
         union = nums1.union(nums2)
         num_jaccard = float(len(inter) / len(union)) if union else 0.0
@@ -140,12 +222,32 @@ def extract_pair_features(
         has_match_num = 1.0 if len(inter) > 0 else 0.0
         num_mismatch_penalty = 1.0 if len(inter) == 0 else 0.0
         num_exact_match = 1.0 if nums1 == nums2 else 0.0
+        num_conflict_ratio = float(len(nums1 - nums2) / max(len(nums1), 1))
+    elif nums1 and not nums2:
+        # FIX (Bottleneck 4): Entity 1 has numbers but candidate has none.
+        # Previously set to 0.0 (false "no conflict"). Now signals full conflict.
+        num_jaccard = 0.0
+        num_inter_cnt = 0.0
+        has_match_num = 0.0
+        num_mismatch_penalty = 1.0   # definite mismatch: s1 has numbers, cand doesn't
+        num_exact_match = 0.0
+        num_conflict_ratio = 1.0     # all s1 numbers are missing from candidate
+    elif not nums1 and nums2:
+        # Mirror case: candidate has numbers but s1 doesn't.
+        num_jaccard = 0.0
+        num_inter_cnt = 0.0
+        has_match_num = 0.0
+        num_mismatch_penalty = 1.0
+        num_exact_match = 0.0
+        num_conflict_ratio = 0.0     # s1 has no numbers, so conflict ratio is undefined → 0
     else:
+        # Neither side has address numbers — truly neutral
         num_jaccard = 0.0
         num_inter_cnt = 0.0
         has_match_num = 0.0
         num_mismatch_penalty = 0.0
         num_exact_match = 0.0
+        num_conflict_ratio = 0.0
 
     # 4. Combined text & Origin metadata
     comb_sort = fuzz.token_sort_ratio(c1, c2) / 100.0
@@ -167,6 +269,11 @@ def extract_pair_features(
         name_first_token_match,
         name_phonetic_jaccard,
         name_first_phonetic_match,
+        name_token_jaccard,
+        name_prefix3_match,
+        name_bigram_jaccard,
+        name_char_ngram_jaccard,
+        name_is_empty,
         addr_ratio,
         addr_partial_ratio,
         addr_token_sort_ratio,
@@ -177,11 +284,14 @@ def extract_pair_features(
         addr_len_ratio,
         addr_exact,
         addr_containment,
+        addr_token_jaccard,
+        addr_is_empty,
         num_jaccard,
         num_inter_cnt,
         has_match_num,
         num_mismatch_penalty,
         num_exact_match,
+        num_conflict_ratio,
         comb_sort,
         comb_set,
         is_s2,

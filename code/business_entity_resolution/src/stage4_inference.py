@@ -160,7 +160,7 @@ def run_stage4_inference(
         for sid, score_list in entity_scores.items():
             ctry = s1_country_map.get(sid, "US")
             th = country_thresholds.get(ctry, default_threshold)
-            matched = filter_matches_with_barrier(score_list, threshold=th, margin=0.12)
+            matched = filter_matches_with_barrier(score_list, threshold=th, margin=0.08, max_matches=12)
             if matched:
                 test_predictions[sid] = matched
 

@@ -58,11 +58,21 @@ def compute_macro_f05(
 def filter_matches_with_barrier(
     score_list: List[Tuple[str, float]],
     threshold: float = 0.50,
-    margin: float = 0.12,
+    margin: float = 0.08,
+    max_matches: int = 12,
 ) -> List[str]:
     """Filters candidate scores applying calibrated decision threshold with margin recovery.
-    - If best candidate score < threshold, treats entity as singleton -> returns [].
-    - If best candidate score >= threshold, accepts top candidate and all candidates within margin.
+
+    FIX (v2): Anchors the acceptance cutoff purely on top_score (not threshold).
+    The old formula `max(threshold-margin, top_score-margin)` let entities with a
+    borderline top_score accept far too many false positives.
+
+    FIX (v3): max_matches raised 8 -> 12 to recover recall on legitimate high-degree
+    clusters (e.g. large franchises/hotel chains with 9-12 branches).
+
+    - If best candidate score < threshold -> singleton, return [].
+    - If best candidate score >= threshold -> accept all within `margin` of top_score.
+    - Hard cap at `max_matches` to prevent run-away FP cascades.
     """
     if not score_list:
         return []
@@ -73,18 +83,22 @@ def filter_matches_with_barrier(
         return []
 
     if margin is None:
-        return [cid for cid, score in sorted_scores if score >= threshold]
+        valid = [cid for cid, score in sorted_scores if score >= threshold]
+    else:
+        # Anchor cutoff ONLY on top_score, never below threshold
+        cutoff = max(threshold, top_score - margin)
+        valid = [cid for cid, score in sorted_scores if score >= cutoff]
 
-    cutoff = max(threshold - margin, top_score - margin)
-    valid = [cid for cid, score in sorted_scores if score >= cutoff]
-    return valid
+    # Hard cap to prevent FP cascades on ambiguous high-traffic entities
+    return valid[:max_matches]
 
 
 def optimize_threshold(
     candidate_scores: Dict[str, List[Tuple[str, float]]],
     ground_truth: Dict[str, Set[str]],
     threshold_range: Tuple[float, float, int] = (0.15, 0.95, 81),
-    margin: float = 0.15,
+    margin: float = 0.08,
+    max_matches: int = 12,
 ) -> Tuple[float, float]:
     """Finds optimal decision threshold maximizing macro-average F_0.5 score."""
     thresholds = np.linspace(threshold_range[0], threshold_range[1], threshold_range[2])
@@ -94,7 +108,7 @@ def optimize_threshold(
     for thresh in thresholds:
         preds: Dict[str, Set[str]] = {}
         for s1_id, score_list in candidate_scores.items():
-            matched = filter_matches_with_barrier(score_list, threshold=thresh, margin=margin)
+            matched = filter_matches_with_barrier(score_list, threshold=thresh, margin=margin, max_matches=max_matches)
             preds[s1_id] = set(matched)
 
         score = compute_macro_f05(preds, ground_truth)
@@ -110,7 +124,8 @@ def optimize_country_thresholds(
     ground_truth: Dict[str, Set[str]],
     country_map: Dict[str, str],
     threshold_range: Tuple[float, float, int] = (0.15, 0.95, 81),
-    margin: float = 0.15,
+    margin: float = 0.08,
+    max_matches: int = 12,
 ) -> Tuple[Dict[str, float], float]:
     """Finds per-country optimal decision thresholds maximizing macro-average F_0.5 score."""
     country_groups: Dict[str, Dict[str, List[Tuple[str, float]]]] = {}
@@ -129,11 +144,11 @@ def optimize_country_thresholds(
 
     for c, c_cands in country_groups.items():
         c_gt = country_gt[c]
-        c_best_th, _ = optimize_threshold(c_cands, c_gt, threshold_range=threshold_range, margin=margin)
+        c_best_th, _ = optimize_threshold(c_cands, c_gt, threshold_range=threshold_range, margin=margin, max_matches=max_matches)
         country_thresholds[c] = c_best_th
 
         for s1_id, score_list in c_cands.items():
-            matched = filter_matches_with_barrier(score_list, threshold=c_best_th, margin=margin)
+            matched = filter_matches_with_barrier(score_list, threshold=c_best_th, margin=margin, max_matches=max_matches)
             all_preds[s1_id] = set(matched)
 
     total_macro_f05 = compute_macro_f05(all_preds, ground_truth)

@@ -44,7 +44,7 @@ GENERIC_STOPWORDS = {
     "city", "state", "door", "plot", "flat", "nagar", "road", "block", "sector",
 }
 
-IDF_MAX_FRACTION = 0.01
+IDF_MAX_FRACTION = 0.015  # raised from 0.01 to recover rare but valid business tokens
 
 
 def extract_blocking_tokens(text: str, max_tokens: int = 6) -> List[str]:
@@ -86,7 +86,7 @@ class MultiIndexBlocker:
 
     def __init__(
         self,
-        max_candidates_per_entity: int = 60,
+        max_candidates_per_entity: int = 80,  # raised from 60 to capture larger entity clusters
         idf_max_fraction: float = IDF_MAX_FRACTION,
     ):
         self.max_candidates_per_entity = max_candidates_per_entity
@@ -98,6 +98,8 @@ class MultiIndexBlocker:
         self.bigram_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
         self.number_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
         self.shingle_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
+        # Emergency fallback: prefix-5 index for zero-candidate entities
+        self.prefix5_index: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: defaultdict(list))
 
         # IDF frequencies: country -> token -> count
         self._name_token_freq: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -155,7 +157,7 @@ class MultiIndexBlocker:
 
             sh_freq = self._shingle_freq[country]
             self._allowed_shingles[country] = {
-                sh for sh, cnt in sh_freq.items() if cnt / pool_sz <= 0.003
+                sh for sh, cnt in sh_freq.items() if cnt / pool_sz <= 0.005  # raised from 0.003
             }
 
             print(
@@ -254,6 +256,12 @@ class MultiIndexBlocker:
                 if sh in allowed_sh:
                     c_sh_idx[sh].append(eid)
 
+            # 6. Prefix-5 fallback index (first 5 alphanumeric chars)
+            c_pfx_idx = self.prefix5_index[country]
+            pfx5 = "".join(c for c in c_name if c.isalnum())[:5].lower()
+            if len(pfx5) >= 3:
+                c_pfx_idx[pfx5].append(eid)
+
         total_time = time.time() - start_time
         print(f"  [100.0%] Finished indexing {total_rows:,} rows in {total_time:.1f}s!\n", flush=True)
 
@@ -307,7 +315,7 @@ class MultiIndexBlocker:
             allowed_addr = self._allowed_addr_tokens.get(country, set())
             allowed_sh = self._allowed_shingles.get(country, set())
 
-            MAX_POSTINGS = 400
+            MAX_POSTINGS = 600  # raised from 400 to avoid clipping valid candidates
 
             # 1. Rare Name Tokens (+3 pts each)
             name_toks = extract_blocking_tokens(c_name, max_tokens=6)
@@ -385,7 +393,13 @@ class MultiIndexBlocker:
                     )[: self.max_candidates_per_entity]
                     candidate_map[s1_id] = sorted_cands
             else:
-                candidate_map[s1_id] = []
+                # FIX: Emergency prefix-5 fallback for zero-candidate entities.
+                # These are entities whose name tokens were all too common (IDF-filtered)
+                # or absent (transliteration). Without this, they are unrecoverably missed.
+                c_pfx_idx = self.prefix5_index.get(country, {})
+                pfx5 = "".join(c for c in c_name if c.isalnum())[:5].lower()
+                fallback_cands = c_pfx_idx.get(pfx5, [])[:30] if len(pfx5) >= 3 else []
+                candidate_map[s1_id] = fallback_cands
 
         total_time = time.time() - start_time
         print(f"  [100.0%] Finished candidate generation for {total_rows:,} entities in {total_time:.1f}s!\n", flush=True)
