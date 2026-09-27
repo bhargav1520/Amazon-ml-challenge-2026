@@ -7,7 +7,7 @@
 ---
 
 ## 1. Executive Summary
-We present a high-throughput, multi-stage Entity Resolution (ER) architecture for cross-source business identity resolution across 1.73M test records. Our approach pairs a 6-pass inverted candidate blocking engine (achieving >99.4% recall) with a 40-dimensional feature extraction layer and a dual GBDT ensemble (LightGBM + CatBoost). With 3x out-of-fold hard-negative mining and country-specific decision threshold annealing, our system achieves strong macro F_0.5 performance while preventing false merges on singleton entities.
+We present a high-throughput, multi-stage Entity Resolution (ER) architecture for cross-source business identity resolution across 1.73M test records. Our approach pairs a 6-pass inverted candidate blocking engine (achieving >99.4% candidate recall) with a 40-dimensional feature extraction layer and a dual GBDT ensemble (LightGBM + CatBoost). With 3x out-of-fold hard-negative mining and country-specific decision threshold calibration, our system achieves high precision (98.24%) and reliable singleton identification (89.65%) while scaling efficiently across millions of record pairs.
 
 ---
 
@@ -21,7 +21,7 @@ Exploratory data analysis across 12M+ cross-source records revealed key noise pa
 4. **Unseen Country in Test**: The test set introduces `France`, requiring dynamic, non-hardcoded token selectivity.
 
 ### 2.2 Solution Strategy
-**Approach Type:** Multi-Pass Inverted Blocking + 40-D C++ Feature Engineering + Dual GBDT Ensemble + Country Threshold Annealing  
+**Approach Type:** Multi-Pass Inverted Blocking + 40-D C++ Feature Engineering + Dual GBDT Ensemble + Country Threshold Calibration  
 **Core Innovation:** A 6-pass multi-indexer with IDF selectivity filtering and emergency prefix fallback ensures high candidate recall, while held-out out-of-sample hard-negative mining prevents tree overconfidence on difficult negative pairs.
 
 ---
@@ -36,7 +36,7 @@ To reduce the comparison space from 3.8 trillion Cartesian pairs to a clean cand
   4. Street Numbers & 5/6-digit postal/PIN codes
   5. Character 3-gram and 4-gram shingles
   6. Emergency 5-character alphanumeric prefix index (handles zero-token transliterations)
-- **Candidate pairs generated:** 25 candidates per entity (average reduction ratio > 99.98%).
+- **Candidate pairs generated:** 80 candidates per entity across 1.73M test entities (average reduction ratio > 99.98%). Zero-candidate entities: 0.
 - **Recall Preservation:** Postings lists capped with priority scoring; entities receiving zero index hits automatically fallback to prefix-5 candidate mining.
 
 ---
@@ -50,22 +50,29 @@ To reduce the comparison space from 3.8 trillion Cartesian pairs to a clean cand
 - **Origin & Combined (5):** Full record combined similarity and source origin flags (`is_source_2`, `is_source_3`).
 
 **Model Architecture:**
-- Dual GBDT Ensemble: LightGBM (800 trees, learning rate 0.04, `is_unbalance=True`) + CatBoost (800 trees, depth 6).
+- Dual GBDT Ensemble: LightGBM (600 trees, learning rate 0.05, `is_unbalance=True`, `max_depth=7`) + CatBoost (600 trees, depth 6).
+- **Training Matrix:** 12,223,402 total pairs mined across 150,000 Source-1 entities with 3x hard-negative augmentation.
 - **Hard-Negative Mining:** 20% held-out out-of-sample scoring to mine false-alarm negatives in the 0.3–0.8 probability band, up-sampled by 3x.
-- **Threshold Selection:** Country-calibrated macro F_0.5 optimization evaluated strictly on unseen validation entities.
+- **Threshold Selection:** Country-calibrated macro F_0.5 optimization evaluated strictly on 25,000 held-out validation entities.
 
 ---
 
 ## 5. Results & Error Analysis
 
-- **Macro F_0.5 Score:** Strong performance on validation set with high precision (>98.5%) and high singleton preservation (>96%).
+- **Macro F_0.5 Score:** **0.7765** on 25,000 held-out validation entities.
+- **Micro Precision:** **98.24%** (952 False Positives).
+- **Micro Recall:** **61.26%** (33,594 False Negatives).
+- **Singleton Accuracy:** **89.65%** (1,238 / 1,381).
 - **Country Breakdown:**
-  - US: High precision on transposed address tokens.
-  - India: Substantial recall gains via dedicated PIN code and landmark abbreviation expansion.
-  - France: Clean generalization via accent-stripping preprocessor and dynamic IDF blocking.
+  - US: Macro F_0.5 = **0.8101** (15,029 entities).
+  - India: Macro F_0.5 = **0.7259** (9,971 entities).
+- **Test Output Distribution (1,732,544 total entities):**
+  - Singletons (no match): **279,741** (16.1%)
+  - Entities with matches: **1,452,803** (83.9%)
+  - Mean matches per entity: **2.20** (Max: 12 matches)
 - **Error Analysis:**
   - *False Positives:* Primarily entities sharing identical commercial plaza addresses with generic business names.
-  - *False Negatives:* Heavy phonetic transliteration differences with zero overlapping digits.
+  - *False Negatives:* Conservative threshold (`US: 0.81`, `India: 0.71`) prioritized precision over recall for borderline phonetic transliterations.
 
 ---
 
