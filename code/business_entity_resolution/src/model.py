@@ -69,7 +69,7 @@ class EntityMatcherModel:
             y = np.append(y, dummy_y)
 
         # If data size allows, train across Stratified Folds
-        if len(y) >= self.n_folds * 10 and len(np.unique(y)) > 1 and min(np.bincount(y)) >= self.n_folds:
+        if self.n_folds > 1 and len(y) >= self.n_folds * 10 and len(np.unique(y)) > 1 and min(np.bincount(y)) >= self.n_folds:
             skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
             splits = list(skf.split(df_X, y))
         else:
