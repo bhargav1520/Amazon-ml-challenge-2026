@@ -157,32 +157,34 @@ def run_stage3_train(
     # FIX (Bottleneck 1): Previously trained on ALL of X_mat then scored the same data,
     # causing tree models to deflate in-sample negative scores to <0.1, missing real
     # hard negatives. Now we split 80/20 and score the held-out portion only.
-    print(f"\n[HARD NEG] Mining hard negatives (x{hard_negative_multiplier} up-sampling for score 0.3-0.8)...", flush=True)
-    from src.model import EntityMatcherModel as _TmpModel
-    n_total = len(X_mat)
-    np.random.seed(0)
-    perm = np.random.permutation(n_total)
-    split = int(0.8 * n_total)
-    train_idx_hn, holdout_idx_hn = perm[:split], perm[split:]
-    quick_model = _TmpModel(n_estimators=50, learning_rate=0.1, n_folds=1, enable_ensemble=False)
-    quick_model.train_on_pairs(X_mat[train_idx_hn], y_vec[train_idx_hn])
-    # Score only the held-out negatives — these scores are out-of-sample and unbiased
-    holdout_neg_mask = y_vec[holdout_idx_hn] == 0
-    holdout_neg_idx = holdout_idx_hn[holdout_neg_mask]
-    if len(holdout_neg_idx) > 0:
-        neg_scores = quick_model.predict_pair_proba(X_mat[holdout_neg_idx])
-        hard_neg_mask = (neg_scores >= 0.3) & (neg_scores <= 0.8)
-        hard_neg_idx = holdout_neg_idx[hard_neg_mask]
-        print(f"  Hard negatives found: {len(hard_neg_idx):,} of {len(holdout_neg_idx):,} held-out negatives", flush=True)
-        if len(hard_neg_idx) > 0:
-            extra_X = np.tile(X_mat[hard_neg_idx], (hard_negative_multiplier - 1, 1))
-            extra_y = np.zeros(len(extra_X), dtype=np.int32)
-            X_mat = np.vstack([X_mat, extra_X])
-            y_vec = np.concatenate([y_vec, extra_y])
-            print(f"  After hard-neg augmentation: {X_mat.shape[0]:,} total pairs", flush=True)
-    del quick_model
-    import gc as _gc
-    _gc.collect()
+    if len(np.unique(y_vec)) > 1 and len(X_mat) >= 10:
+        print(f"\n[HARD NEG] Mining hard negatives (x{hard_negative_multiplier} up-sampling for score 0.3-0.8)...", flush=True)
+        from src.model import EntityMatcherModel as _TmpModel
+        n_total = len(X_mat)
+        np.random.seed(0)
+        perm = np.random.permutation(n_total)
+        split = max(1, int(0.8 * n_total))
+        train_idx_hn, holdout_idx_hn = perm[:split], perm[split:]
+        if len(np.unique(y_vec[train_idx_hn])) > 1:
+            quick_model = _TmpModel(n_estimators=50, learning_rate=0.1, n_folds=1, enable_ensemble=False)
+            quick_model.train_on_pairs(X_mat[train_idx_hn], y_vec[train_idx_hn])
+            # Score only the held-out negatives — these scores are out-of-sample and unbiased
+            holdout_neg_mask = y_vec[holdout_idx_hn] == 0
+            holdout_neg_idx = holdout_idx_hn[holdout_neg_mask]
+            if len(holdout_neg_idx) > 0:
+                neg_scores = quick_model.predict_pair_proba(X_mat[holdout_neg_idx])
+                hard_neg_mask = (neg_scores >= 0.3) & (neg_scores <= 0.8)
+                hard_neg_idx = holdout_neg_idx[hard_neg_mask]
+                print(f"  Hard negatives found: {len(hard_neg_idx):,} of {len(holdout_neg_idx):,} held-out negatives", flush=True)
+                if len(hard_neg_idx) > 0:
+                    extra_X = np.tile(X_mat[hard_neg_idx], (hard_negative_multiplier - 1, 1))
+                    extra_y = np.zeros(len(extra_X), dtype=np.int32)
+                    X_mat = np.vstack([X_mat, extra_X])
+                    y_vec = np.concatenate([y_vec, extra_y])
+                    print(f"  After hard-neg augmentation: {X_mat.shape[0]:,} total pairs", flush=True)
+            del quick_model
+            import gc as _gc
+            _gc.collect()
 
     # X_train_list and y_train_list already consumed above
     gc.collect()

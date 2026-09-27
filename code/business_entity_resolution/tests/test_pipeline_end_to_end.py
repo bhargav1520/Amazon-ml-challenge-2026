@@ -29,9 +29,11 @@ def dummy_dataset_dirs(tmp_path: Path):
     ])
     s2_train = pd.DataFrame([
         {"entity_id": "S2-1", "business_name": "Acme Corporation", "business_address": "123 Main Street NY 10001", "country": "US"},
+        {"entity_id": "S2-2", "business_name": "Acme Hardware Store", "business_address": "500 Broadway NY 10002", "country": "US"},
     ])
     s3_train = pd.DataFrame([
         {"entity_id": "S3-2", "business_name": "Tata Motors Ltd", "business_address": "MG Rd Mumbai 400001", "country": "India"},
+        {"entity_id": "S3-3", "business_name": "Tata Coffee Estate", "business_address": "MG Road Kolkata 700001", "country": "India"},
     ])
     gt_train = pd.DataFrame([
         {"source1_entity_id": "S1-1", "matched_entity_ids": "S2-1"},
