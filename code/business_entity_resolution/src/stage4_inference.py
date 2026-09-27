@@ -142,20 +142,27 @@ def run_stage4_inference(
     start_time = time.time()
     total_evaluated_pairs = 0
 
+    from collections import defaultdict
+    from src.postprocessing import filter_matches_with_barrier
+
     def _process_batch(feat_batch, map_batch):
         if not feat_batch:
             return
         X_batch = np.array(feat_batch, dtype=np.float32)
         probas = matcher.predict_pair_proba(X_batch)
         del X_batch
+        
+        entity_scores = defaultdict(list)
         for (sid, cand_id), prob in zip(map_batch, probas):
+            entity_scores[sid].append((cand_id, float(prob)))
+        del probas
+        
+        for sid, score_list in entity_scores.items():
             ctry = s1_country_map.get(sid, "US")
             th = country_thresholds.get(ctry, default_threshold)
-            if prob >= th:
-                if sid not in test_predictions:
-                    test_predictions[sid] = []
-                test_predictions[sid].append(cand_id)
-        del probas
+            matched = filter_matches_with_barrier(score_list, threshold=th, margin=0.12)
+            if matched:
+                test_predictions[sid] = matched
 
     for idx, s1_id in enumerate(all_s1_ids):
         if idx % log_step == 0 or idx == total_s1 - 1:
@@ -180,10 +187,10 @@ def run_stage4_inference(
                 pair_mapping_batch.append((s1_id, cid))
                 total_evaluated_pairs += 1
 
-                if len(pair_features_batch) >= batch_size:
-                    _process_batch(pair_features_batch, pair_mapping_batch)
-                    pair_features_batch.clear()
-                    pair_mapping_batch.clear()
+        if len(pair_features_batch) >= batch_size:
+            _process_batch(pair_features_batch, pair_mapping_batch)
+            pair_features_batch.clear()
+            pair_mapping_batch.clear()
 
     # Remaining pairs
     if pair_features_batch:
